@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_database/firebase_database.dart';
 import '../models/chat_message_model.dart';
 
@@ -20,10 +22,16 @@ class ChatService {
         'timestamp': ServerValue.timestamp, // Server-side time prevents local clock issues
       };
 
-      await _dbRef.push().set(messageData);
+      await _dbRef
+          .push()
+          .set(messageData)
+          .timeout(const Duration(seconds: 10));
+    } on TimeoutException {
+      throw Exception(
+        'Connection timed out. Verify that Firebase Realtime Database is configured correctly.',
+      );
     } catch (e) {
-      // Re-throw the error to be handled by the ViewModel
-      throw Exception('Database Error: Could not send message.');
+      throw Exception('Database Error: $e');
     }
   }
 

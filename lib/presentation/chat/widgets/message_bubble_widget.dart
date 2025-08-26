@@ -14,43 +14,45 @@ class MessageBubbleWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Formatting the timestamp to a readable time (e.g., 14:30)
-    final String formattedTime = DateFormat('HH:mm').format(
-      DateTime.fromMillisecondsSinceEpoch(message.timestamp),
-    );
+    final formattedTime = DateFormat(
+      'HH:mm',
+    ).format(DateTime.fromMillisecondsSinceEpoch(message.timestamp));
+    final bubbleColor = isMe
+        ? const Color(0xFF111111)
+        : const Color(0xFFF1F3F5);
+    final textColor = isMe ? Colors.white : const Color(0xFF111111);
+    final timeColor = isMe ? Colors.white70 : const Color(0xFF6B7280);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
-        // Aligns to the right if isMe is true, left otherwise
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
-          // Sender Name
           Padding(
-            padding: const EdgeInsets.only(bottom: 2.0, left: 4.0, right: 4.0),
+            padding: const EdgeInsets.only(bottom: 2, left: 2, right: 2),
             child: Text(
               isMe ? 'You' : message.senderName,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.bold,
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          
-          // Message Container
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
             ),
             decoration: BoxDecoration(
-              color: isMe ? Colors.blue[700] : Colors.grey[300],
+              color: bubbleColor,
               borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16.0),
-                topRight: const Radius.circular(16.0),
-                bottomLeft: Radius.circular(isMe ? 16.0 : 0),
-                bottomRight: Radius.circular(isMe ? 0 : 16.0),
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isMe ? 16 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 16),
               ),
             ),
             child: Column(
@@ -58,18 +60,12 @@ class MessageBubbleWidget extends StatelessWidget {
               children: [
                 Text(
                   message.text,
-                  style: TextStyle(
-                    color: isMe ? Colors.white : Colors.black87,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(color: textColor, fontSize: 15, height: 1.3),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   formattedTime,
-                  style: TextStyle(
-                    color: isMe ? Colors.white70 : Colors.black54,
-                    fontSize: 10,
-                  ),
+                  style: TextStyle(color: timeColor, fontSize: 10),
                 ),
               ],
             ),

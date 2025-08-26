@@ -1,45 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myapp/core/services/auth_service.dart';
+import 'package:myapp/data/services/chat_service.dart';
 import 'package:myapp/presentation/auth/view_models/auth_view_model.dart';
 import 'package:myapp/presentation/auth/views/login_view.dart';
+import 'package:myapp/presentation/auth/views/register_view.dart';
 import 'package:myapp/presentation/chat/chat_room_view.dart';
+import 'package:myapp/presentation/chat/view_models/chat_view_model.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'core/theme/app_theme.dart';
-import 'presentation/chat/views/chat_screen.dart';
 import 'firebase_options.dart';
-import 'package:myapp/core/services/auth_service.dart';
-import 'package:myapp/presentation/auth/views/login_view.dart';
-
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final authViewModel = context.watch<AuthViewModel>();
-
-    return StreamBuilder(
-      stream: authViewModel.authStateChanges,
+    return StreamBuilder<User?>(
+      stream: context.watch<AuthViewModel>().authStateChanges,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasData) {
-          return const ChatRoomView();
+          return ChangeNotifierProvider(
+            create: (context) => ChatViewModel(context.read<ChatService>()),
+            child: const ChatRoomView(),
+          );
         }
         return const LoginView();
       },
     );
   }
 }
+
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized(); // Required for Firebase
-  
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(
     MultiProvider(
@@ -48,6 +50,7 @@ void main() async {
         Provider<AuthService>(
           create: (_) => AuthService(FirebaseAuth.instance),
         ),
+        Provider<ChatService>(create: (_) => ChatService()),
         ChangeNotifierProvider<AuthViewModel>(
           create: (context) => AuthViewModel(context.read<AuthService>()),
         ),
@@ -73,14 +76,10 @@ class MyApp extends StatelessWidget {
 
 final GoRouter _router = GoRouter(
   routes: [
+    GoRoute(path: '/', builder: (context, state) => const AuthGate()),
     GoRoute(
-      path: '/',
-      builder: (context, state) => const LoginView(),
-    ),
-    GoRoute(
-      path: '/chat',
-      // Aqui estava ChatScreen(), mude para ChatRoomView()
-      builder: (context, state) => const ChatRoomView(), 
+      path: '/register',
+      builder: (context, state) => const RegisterView(),
     ),
   ],
 );

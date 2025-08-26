@@ -3,6 +3,9 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 class DefaultFirebaseOptions {
+  static const String _databaseUrl =
+      'https://chatminusis-default-rtdb.firebaseio.com';
+
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
       return web;
@@ -25,6 +28,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '216172016070',
     projectId: 'chatminusis',
     authDomain: 'chatminusis.firebaseapp.com',
+    databaseURL: _databaseUrl,
     storageBucket: 'chatminusis.firebasestorage.app',
   );
 
@@ -33,6 +37,7 @@ class DefaultFirebaseOptions {
     appId: '1:216172016070:android:7d7dc1260d1c0389e1c2c7',
     messagingSenderId: '216172016070',
     projectId: 'chatminusis',
+    databaseURL: _databaseUrl,
     storageBucket: 'chatminusis.firebasestorage.app',
   );
 
@@ -41,6 +46,7 @@ class DefaultFirebaseOptions {
     appId: '1:216172016070:android:7d7dc1260d1c0389e1c2c7',
     messagingSenderId: '216172016070',
     projectId: 'chatminusis',
+    databaseURL: _databaseUrl,
     storageBucket: 'chatminusis.firebasestorage.app',
     iosBundleId: 'com.chatminusis.app',
   );
