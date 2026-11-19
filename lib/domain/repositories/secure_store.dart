@@ -7,6 +7,9 @@ abstract class SecureStore {
   Future<void> write(String name, Uint8List value);
   Future<void> delete(String name);
 
+  /// Names of all stored entries.
+  Future<List<String>> names();
+
   /// Erases everything (logout).
   Future<void> wipe();
 }

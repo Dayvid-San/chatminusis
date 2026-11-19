@@ -45,6 +45,9 @@ class MemoryConversationBackend implements ConversationBackend {
   Future<int> countKeyPackages(String uid) async => keyPackages[uid]?.length ?? 0;
 
   @override
+  Future<void> clearKeyPackages(String uid) async => keyPackages.remove(uid);
+
+  @override
   Future<Uint8List?> claimKeyPackage(String uid) async {
     final list = keyPackages[uid];
     if (list == null || list.isEmpty) return null;

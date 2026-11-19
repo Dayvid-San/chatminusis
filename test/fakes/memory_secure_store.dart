@@ -15,5 +15,8 @@ class MemorySecureStore implements SecureStore {
   Future<void> delete(String name) async => data.remove(name);
 
   @override
+  Future<List<String>> names() async => data.keys.toList();
+
+  @override
   Future<void> wipe() async => data.clear();
 }

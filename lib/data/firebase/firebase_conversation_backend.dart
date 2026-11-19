@@ -46,6 +46,9 @@ class FirebaseConversationBackend implements ConversationBackend {
   }
 
   @override
+  Future<void> clearKeyPackages(String uid) => _root.child('keyPackages/$uid').remove();
+
+  @override
   Future<Uint8List?> claimKeyPackage(String uid) async {
     for (var round = 0; round < 3; round++) {
       final snap = await _root.child('keyPackages/$uid').orderByKey().limitToFirst(5).get();

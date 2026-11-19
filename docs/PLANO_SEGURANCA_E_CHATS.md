@@ -194,13 +194,15 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - **Owner:** fazer o deploy (`firebase deploy --only functions,database`), habilitar o plano Blaze, enviar a chave APNs ao Firebase e ativar Push Notifications + Background Modes no Xcode.
 - Consequência da retenção: quem ficar mais de 30 dias sem abrir o app perde commits e precisa ser adicionado de novo aos grupos.
 
-### Etapa 10. Backup cifrado `[ ]`
-- [ ] Implementar o desenho da seção 3.2 (código de recuperação + metade no servidor + Argon2id + AES-256-GCM).
-- [ ] Mostrar o código de recuperação uma vez, pedir confirmação de que foi anotado.
-- [ ] Onde guardar o arquivo: armazenamento do backend (opaco) ou Google Drive / iCloud (opaco).
-- [ ] Restaurar em aparelho novo: login + código → baixa `metadeServidor` → decifra → recria estado.
-- [ ] Limite de tentativas na entrega de `metadeServidor`; trocar código de recuperação gera nova chave e novo backup.
-- **Pronto quando:** um backup copiado para outro lugar não pode ser aberto sem conta + código.
+### Etapa 10. Backup cifrado `[x]`
+- [x] Desenho da seção 3.2: código de recuperação de 260 bits (52 caracteres) + metade de 32 bytes no servidor + Argon2id (64 MiB, 3 passes) + HKDF + AES-256-GCM, com parâmetros autenticados (sem downgrade).
+- [x] Código mostrado uma vez; o usuário confirma digitando o último bloco.
+- [x] Arquivo guardado no nosso backend (`backups/{uid}`), legível só pelo dono verificado; metade do servidor em `backupShares/{uid}`.
+- [x] Restauração em aparelho novo: login + código → estado e histórico restaurados, mesma identidade (contatos não veem troca de chave).
+- [x] Depois de restaurar: KeyPackages antigos apagados e substituídos, e chaves renovadas em todas as conversas antes de qualquer envio (evita reutilizar chaves/nonces do aparelho antigo).
+- [x] Backup automático a cada 24 h, manual, troca de código e desativação (apaga a cópia do servidor).
+- O código fica salvo no cofre local do aparelho para permitir o backup automático (mesma proteção das chaves).
+- Limite de tentativas na entrega da metade do servidor: depende da autenticação da conta + App Check. Para um limite real por tentativas, mover a entrega para uma Cloud Function (pendência).
 
 ### Etapa 11. Migração para Supabase `[ ]`
 - [ ] Implementar os repositórios com Supabase (Postgres + RLS + Realtime + Storage).

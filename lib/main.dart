@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'core/security/app_lock.dart';
 import 'core/theme/app_theme.dart';
 import 'data/firebase/firebase_auth_repository.dart';
+import 'data/firebase/firebase_backup_backend.dart';
 import 'data/firebase/firebase_conversation_backend.dart';
 import 'data/firebase/firebase_push_registry.dart';
 import 'data/local/file_secure_store.dart';
@@ -19,6 +20,7 @@ import 'data/firebase/firebase_profile_repository.dart';
 import 'domain/entities/app_user.dart';
 import 'domain/repositories/auth_repository.dart';
 import 'domain/entities/user_profile.dart';
+import 'domain/repositories/backup_backend.dart';
 import 'domain/repositories/conversation_backend.dart';
 import 'domain/repositories/profile_repository.dart';
 import 'domain/repositories/push_registry.dart';
@@ -88,6 +90,7 @@ Future<void> main() async {
         Provider<AuthRepository>(create: (_) => FirebaseAuthRepository(FirebaseAuth.instance)),
         Provider<ConversationBackend>(create: (_) => FirebaseConversationBackend(FirebaseDatabase.instance)),
         Provider<SecureStoreFactory>.value(value: FileSecureStore.open),
+        Provider<BackupBackend>(create: (_) => FirebaseBackupBackend(FirebaseDatabase.instance)),
         Provider<PushRegistry>(
           create: (_) => FirebasePushRegistry(FirebaseDatabase.instance, FirebaseMessaging.instance),
         ),

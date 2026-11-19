@@ -103,6 +103,7 @@ class MessagingService {
       await _loadConversations();
       await _loadPins();
       await _purgeExpired();
+      await _afterRestore();
     });
     await _ensureKeyPackages();
     _subs.add(_backend.watchWelcomes(uid).listen((w) => _lock.run(() => _onWelcome(w))));
@@ -112,7 +113,47 @@ class MessagingService {
     }
     _purgeTimer = Timer.periodic(const Duration(minutes: 1), (_) => _lock.run(_purgeExpired));
     _emit();
+    unawaited(_rotateRestored());
   }
+
+  /// Marker written by the backup restore.
+  static const restoredFlag = 'restored_pending';
+
+  /// After restoring a backup, the old device may have used sender keys and
+  /// KeyPackages that this copy does not know about. Replace the KeyPackages
+  /// and rotate keys in every conversation before sending anything (prevents
+  /// AEAD nonce reuse).
+  Future<void> _afterRestore() async {
+    if (await _store.read(restoredFlag) == null) return;
+    await _backend.clearKeyPackages(uid);
+    for (final c in _convs.values.where((c) => !c.removed)) {
+      c.needsRotation = true;
+      await _saveConv(c);
+    }
+    await _store.delete(restoredFlag);
+  }
+
+  Future<void> _rotateRestored() async {
+    await Future<void>.delayed(const Duration(milliseconds: 500)); // let envelopes replay first
+    for (final c in _convs.values.where((c) => c.needsRotation && !c.removed).toList()) {
+      try {
+        await rotateKeys(c.id);
+      } catch (_) {
+        // Retried before the next send.
+      }
+    }
+  }
+
+  /// Copy of every local entry, taken atomically with respect to MLS updates
+  /// (used by the backup).
+  Future<Map<String, Uint8List>> exportLocalState() => _lock.run(() async {
+    final out = <String, Uint8List>{};
+    for (final name in await _store.names()) {
+      final v = await _store.read(name);
+      if (v != null) out[name] = v;
+    }
+    return out;
+  });
 
   Future<void> dispose() async {
     _purgeTimer?.cancel();
@@ -703,7 +744,9 @@ class MessagingService {
     await _withCommitRetry(id, () async {
       final out = await _engine.selfUpdate(groupId: _gid(id));
       await _publishCommit(id, out);
-      _convs[id]!.lastRotation = _now().millisecondsSinceEpoch;
+      _convs[id]!
+        ..lastRotation = _now().millisecondsSinceEpoch
+        ..needsRotation = false;
       await _saveConv(_convs[id]!);
     });
   }
@@ -747,6 +790,7 @@ class MessagingService {
   }
 
   Future<void> _sendPayload(String id, Map<String, Object?> payload, {String? localText, Duration? ttl}) async {
+    if (_convs[id]?.needsRotation ?? false) await rotateKeys(id);
     for (var attempt = 0; ; attempt++) {
       try {
         await _lock.run(() async {
@@ -827,6 +871,7 @@ class _Conv {
   int joinedEpoch = 0;
   int lastRotation = 0;
   bool removed = false;
+  bool needsRotation = false;
   ConversationRecord? record;
   final Set<String> processed = <String>{};
   final List<DecryptedMessage> messages = [];
@@ -838,6 +883,7 @@ class _Conv {
     'joined': joinedEpoch,
     'rot': lastRotation,
     'removed': removed,
+    'nr': needsRotation,
     'processed': processed.toList(),
     'messages': messages.map((m) => m.toJson()).toList(),
   };
@@ -847,7 +893,8 @@ class _Conv {
       ..title = j['title'] as String?
       ..joinedEpoch = j['joined'] as int? ?? 0
       ..lastRotation = j['rot'] as int? ?? 0
-      ..removed = j['removed'] as bool? ?? false;
+      ..removed = j['removed'] as bool? ?? false
+      ..needsRotation = j['nr'] as bool? ?? false;
     c.processed.addAll((j['processed'] as List? ?? const []).cast<String>());
     c.messages.addAll(
       (j['messages'] as List? ?? const []).map((m) => DecryptedMessage.fromJson((m as Map).cast<String, Object?>())),
