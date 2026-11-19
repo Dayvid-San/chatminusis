@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../../data/models/chat_message_model.dart';
-import '../../../data/services/chat_service.dart';
+import '../../../domain/entities/chat_message.dart';
+import '../../../domain/repositories/global_chat_repository.dart';
 
 class ChatViewModel extends ChangeNotifier {
-  final ChatService _chatService;
+  final GlobalChatRepository _chatService;
 
   List<ChatMessage> _messages = [];
   bool _isLoading = true;
@@ -44,12 +44,12 @@ class ChatViewModel extends ChangeNotifier {
 
       _isLoading = false;
       _errorMessage =
-          'Unable to load messages. Verify that Firebase Realtime Database is configured.';
+          'Não foi possível carregar as mensagens.';
       _errorRequest++;
       notifyListeners();
     });
 
-    _messageSubscription = _chatService.getMessagesStream().listen(
+    _messageSubscription = _chatService.watchMessages().listen(
       (newMessageList) {
         _initialLoadTimeout?.cancel();
         final wasLoading = _isLoading;
@@ -73,7 +73,7 @@ class ChatViewModel extends ChangeNotifier {
       onError: (error) {
         _initialLoadTimeout?.cancel();
         _isLoading = false;
-        _errorMessage = 'Error loading messages: $error';
+        _errorMessage = 'Erro ao carregar mensagens.';
         _errorRequest++;
         notifyListeners();
       },
@@ -103,7 +103,7 @@ class ChatViewModel extends ChangeNotifier {
       return true;
     } catch (e) {
       _isSending = false;
-      _errorMessage = 'Failed to send message: $e';
+      _errorMessage = 'Falha ao enviar a mensagem.';
       _errorRequest++;
       notifyListeners();
       return false;

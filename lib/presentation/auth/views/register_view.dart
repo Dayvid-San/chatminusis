@@ -32,9 +32,9 @@ class _RegisterViewState extends State<RegisterView> {
     final authViewModel = context.read<AuthViewModel>();
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
 
-    final created = await authViewModel.register(email, password, displayName: name);
+    final created = await authViewModel.register(email: email, password: password, displayName: name);
 
     if (!mounted) {
       return;
@@ -75,17 +75,11 @@ class _RegisterViewState extends State<RegisterView> {
   }
 
   String? _validatePassword(String? value) {
-    final password = value?.trim() ?? '';
-
+    final password = value ?? '';
     if (password.isEmpty) {
       return 'Informe sua senha.';
     }
-
-    if (password.length < 6) {
-      return 'A senha deve ter pelo menos 6 caracteres.';
-    }
-
-    return null;
+    return validateNewPassword(password);
   }
 
   @override

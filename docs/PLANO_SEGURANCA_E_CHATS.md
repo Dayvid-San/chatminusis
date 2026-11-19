@@ -128,12 +128,13 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - [ ] Owner escolhe a licença (seção 3.3) e adicionamos o `LICENSE`.
 - **Pronto quando:** PoC funciona nas duas plataformas e a licença está definida.
 
-### Etapa 1. Endurecimento da base e abstração de backend `[ ]`
-- [ ] Criar as interfaces de repositório (seção 3.4) e adaptar o código atual a elas.
-- [ ] Versionar as regras do banco; negar tudo por padrão.
-- [ ] Ativar App Check (Play Integrity / App Attest).
-- [ ] Exigir verificação de e-mail; limitar tentativas de login.
-- [ ] Congelar a sala global `/messages`.
+### Etapa 1. Endurecimento da base e abstração de backend `[x]`
+- [x] Interfaces `AuthRepository` e `GlobalChatRepository` (`lib/domain`) com implementação Firebase (`lib/data/firebase`); nenhuma tela importa `firebase_*`.
+- [x] Regras versionadas (`firebase/database.rules.json`), negando tudo por padrão; testes no emulador (`cd firebase && npm test`).
+- [x] App Check ativado (Play Integrity / App Attest; provedor de debug em builds de desenvolvimento). **Owner:** ativar a aplicação (enforcement) no console do Firebase.
+- [x] Verificação de e-mail obrigatória (tela própria + regras exigem `email_verified`); senha de 10+ caracteres com letras e números; bloqueio progressivo após 3 falhas de login.
+- [x] Plataforma iOS adicionada (`com.chatminusis.app`); arquivo duplicado quebrado removido.
+- [ ] Congelar a sala global `/messages`: feito na Etapa 4, quando as conversas cifradas a substituem.
 - **Pronto quando:** testes no Emulator provam que um usuário não lê dados de outro, e nenhuma tela importa `firebase_*` diretamente.
 
 ### Etapa 2. Nickname único `[ ]`

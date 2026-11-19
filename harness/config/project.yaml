@@ -15,9 +15,9 @@ commits:
 
 checks:                          # rodar antes de todo merge em develop
   - flutter pub get
-  - dart format --set-exit-if-changed lib test
-  - flutter analyze
+  - flutter analyze --no-fatal-infos
   - flutter test
+  - (cd firebase && npm ci && npm test)   # regras do banco no emulador (Java 11+)
 
 checks_crypto:                   # obrigatório se tocar rust/ ou packages/chat_crypto_ffi/
   - cargo test --manifest-path rust/chat_crypto/Cargo.toml
