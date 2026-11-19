@@ -6,8 +6,8 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 
-import { ServiceError, claimKeyPackageCore, findByNicknameCore, requireVerified } from './core.js';
-import { buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune } from './lib.js';
+import { ServiceError, backupShareCore, claimKeyPackageCore, findByNicknameCore, requireVerified } from './core.js';
+import { buildBackupAlert, buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune } from './lib.js';
 
 initializeApp();
 
@@ -88,5 +88,27 @@ export const findByNickname = onCall(
   guard(async (request) => {
     const caller = requireVerified(request.auth);
     return { profile: await findByNicknameCore(getDatabase(), caller, request.data?.nickname) };
+  }),
+);
+
+/**
+ * Backup server share: only after a fresh password login, and the owner's
+ * devices get an alert every time it is downloaded.
+ */
+export const getBackupShare = onCall(
+  { region: 'us-central1', enforceAppCheck: true },
+  guard(async (request) => {
+    const uid = requireVerified(request.auth);
+    const db = getDatabase();
+    const share = await backupShareCore(db, uid, request.auth.token.auth_time);
+    if (share !== null) {
+      const tokens = collectTokens({ [uid]: (await db.ref(`pushTokens/${uid}`).get()).val() });
+      if (tokens.length > 0) {
+        await getMessaging()
+          .sendEachForMulticast(buildBackupAlert(tokens.map((t) => t.token)))
+          .catch(() => logger.warn('backup alert push failed'));
+      }
+    }
+    return { share };
   }),
 );

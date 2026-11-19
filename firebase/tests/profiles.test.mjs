@@ -111,15 +111,24 @@ test('push tokens are private to their owner', async () => {
   await assertFails(set(ref(t.user('alice'), 'pushTokens/alice/dev3'), { ...tok, platform: 'web' }));
 });
 
-test('backup and server share are readable and writable only by the verified owner', async () => {
+test('backup: owner reads the file; the server share is write-only for clients', async () => {
   const share = { share: 'A'.repeat(43) + '=', createdAt: serverTimestamp() };
   const backup = { blob: 'Q01CSw==', meta: { createdAt: serverTimestamp(), size: 4 } };
   await assertSucceeds(set(ref(t.user('alice'), 'backupShares/alice'), share));
   await assertSucceeds(set(ref(t.user('alice'), 'backups/alice'), backup));
-  await assertSucceeds(get(ref(t.user('alice'), 'backupShares/alice')));
-  await assertFails(get(ref(t.user('bob'), 'backupShares/alice')));
+  await assertSucceeds(get(ref(t.user('alice'), 'backups/alice')));
+  await assertFails(get(ref(t.user('alice'), 'backupShares/alice')), 'not even the owner: only the function, after a fresh login');
   await assertFails(get(ref(t.user('bob'), 'backups/alice')));
   await assertFails(set(ref(t.user('bob'), 'backups/alice'), backup));
-  await assertFails(get(ref(t.user('alice', false), 'backupShares/alice')));
+  await assertFails(set(ref(t.user('bob'), 'backupShares/alice'), share));
+  await assertFails(get(ref(t.user('alice', false), 'backups/alice')));
   await assertFails(set(ref(t.user('alice'), 'backupShares/alice'), { share: 'curto', createdAt: serverTimestamp() }));
+});
+
+test('download log: readable only by the owner and never writable by clients', async () => {
+  await t.seed('backupDownloads/alice/d1', { at: 1 });
+  await assertSucceeds(get(ref(t.user('alice'), 'backupDownloads/alice')));
+  await assertFails(get(ref(t.user('bob'), 'backupDownloads/alice')));
+  await assertFails(set(ref(t.user('alice'), 'backupDownloads/alice/d2'), { at: 2 }));
+  await assertFails(set(ref(t.user('alice'), 'backupDownloads/alice/d1'), null), 'cannot erase the trail');
 });

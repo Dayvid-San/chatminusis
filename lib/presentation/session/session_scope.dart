@@ -134,6 +134,7 @@ class _SessionScopeState extends State<SessionScope> {
     if (_offerRestore) {
       return RestoreView(
         backup: _backup!,
+        onReauth: context.read<AuthViewModel>().reauthenticate,
         onDone: (_) {
           setState(() => _offerRestore = false);
           _startMessaging();

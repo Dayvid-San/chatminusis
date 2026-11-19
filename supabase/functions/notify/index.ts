@@ -5,6 +5,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const GENERIC = { title: 'Chatminusis', body: 'Nova mensagem' };
+const BACKUP_ALERT = { title: 'Chatminusis', body: 'Seu backup foi baixado. Se não foi você, troque sua senha.' };
 
 function b64url(data: ArrayBuffer | string): string {
   const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
@@ -39,16 +40,30 @@ async function accessToken(sa: { client_email: string; private_key: string }): P
 
 Deno.serve(async (req) => {
   if (req.headers.get('x-webhook-secret') !== Deno.env.get('WEBHOOK_SECRET')) return new Response('forbidden', { status: 403 });
-  const { record } = await req.json();
-  if (!record || record.kind !== 'app') return new Response('ignored');
-
+  const { record, table } = await req.json();
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+  // Alert: the backup key share was downloaded (webhook on INSERT into backup_downloads).
+  if (table === 'backup_downloads' && record?.user_id) {
+    const { data: own } = await db.from('push_tokens').select('user_id, device_id, token').eq('user_id', record.user_id);
+    if (own?.length) await sendAll(own, BACKUP_ALERT, 'chatminusis-backup', db);
+    return new Response('alerted');
+  }
+
+  if (!record || record.kind !== 'app') return new Response('ignored');
   const { data: members } = await db.from('conversation_members').select('user_id').eq('conversation_id', record.conversation_id);
   const recipients = (members ?? []).map((m) => m.user_id).filter((u) => u !== record.sender);
   if (recipients.length === 0) return new Response('no recipients');
   const { data: tokens } = await db.from('push_tokens').select('user_id, device_id, token').in('user_id', recipients);
   if (!tokens?.length) return new Response('no tokens');
 
+  await sendAll(tokens, GENERIC, 'chatminusis', db);
+  return new Response('ok');
+});
+
+type PushToken = { user_id: string; device_id: string; token: string };
+
+async function sendAll(tokens: PushToken[], notification: { title: string; body: string }, tag: string, db: ReturnType<typeof createClient>) {
   const sa = JSON.parse(Deno.env.get('FCM_SERVICE_ACCOUNT')!);
   const bearer = await accessToken(sa);
   const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
@@ -57,14 +72,13 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' },
       body: JSON.stringify({ message: {
-        token: t.token, notification: GENERIC,
-        android: { priority: 'high', notification: { tag: 'chatminusis' } },
-        apns: { headers: { 'apns-collapse-id': 'chatminusis' }, payload: { aps: { sound: 'default' } } },
+        token: t.token, notification,
+        android: { priority: 'high', notification: { tag } },
+        apns: { headers: { 'apns-collapse-id': tag }, payload: { aps: { sound: 'default' } } },
       } }),
     });
     if (res.status === 404 || res.status === 400) {
       await db.from('push_tokens').delete().eq('user_id', t.user_id).eq('device_id', t.device_id);
     }
   }));
-  return new Response('ok');
-});
+}

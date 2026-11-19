@@ -70,4 +70,12 @@ void main() {
     expect(await vm.updateDisplayName('Novo Nome'), isTrue);
     expect(vm.displayName, 'Novo Nome');
   });
+
+  test('reauthentication confirms the password and counts wrong ones as failures', () async {
+    await vm.signIn('a@b.com', repo.password);
+    expect(await vm.reauthenticate('errada'), isFalse);
+    expect(vm.errorMessage, contains('incorretos'));
+    expect(await vm.reauthenticate(repo.password), isTrue);
+    expect(repo.reauths, 1);
+  });
 }

@@ -7,7 +7,7 @@ import '../repositories/backup_backend.dart';
 import '../repositories/secure_store.dart';
 import 'messaging_service.dart';
 
-enum BackupError { noBackup, noServerShare, wrongCode, wrongAccount, invalidCode }
+enum BackupError { noBackup, noServerShare, wrongCode, wrongAccount, invalidCode, reauthRequired, rateLimited }
 
 class BackupException implements Exception {
   const BackupException(this.error);
@@ -33,6 +33,7 @@ class BackupService {
   final DateTime Function() _now;
 
   static const _codeKey = 'backup_code';
+  static const _shareKey = 'backup_share';
   static const _lastKey = 'backup_last';
   static const autoInterval = Duration(hours: 24);
 
@@ -49,7 +50,11 @@ class BackupService {
   /// which must be shown to the user exactly once.
   Future<String> enable(MessagingService messaging) async {
     final code = generateRecoveryCode();
-    await _backend.putServerShare(uid, randomBytes(len: 32));
+    final share = randomBytes(len: 32);
+    await _backend.putServerShare(uid, share); // write-only for clients
+    // This device keeps its own copy (sealed in the vault, like the code) so
+    // daily backups never need the server to hand the share back.
+    await _store.write(_shareKey, share);
     await _store.write(_codeKey, utf8.encode(code));
     await backupNow(messaging);
     return code;
@@ -58,8 +63,7 @@ class BackupService {
   Future<void> backupNow(MessagingService messaging) async {
     final code = await _store.read(_codeKey);
     if (code == null) return;
-    final share = await _backend.getServerShare(uid);
-    if (share == null) throw const BackupException(BackupError.noServerShare);
+    final share = await _localShare();
     final entries = await messaging.exportLocalState();
     final plain = utf8.encode(
       jsonEncode({
@@ -73,6 +77,31 @@ class BackupService {
     await _backend.putBlob(uid, blob);
     await _store.write(_lastKey, utf8.encode('${_now().millisecondsSinceEpoch}'));
   }
+
+  /// The share kept on this device; falls back to the server (fresh login
+  /// required) for backups enabled before the local copy existed.
+  Future<Uint8List> _localShare() async {
+    final local = await _store.read(_shareKey);
+    if (local != null) return local;
+    final share = await _fetchShare();
+    await _store.write(_shareKey, share);
+    return share;
+  }
+
+  Future<Uint8List> _fetchShare() async {
+    try {
+      final share = await _backend.getServerShare(uid);
+      if (share == null) throw const BackupException(BackupError.noServerShare);
+      return share;
+    } on ReauthRequiredException {
+      throw const BackupException(BackupError.reauthRequired);
+    } on RateLimitedException {
+      throw const BackupException(BackupError.rateLimited);
+    }
+  }
+
+  /// Recent downloads of the server share (so the owner can spot an unexpected one).
+  Future<List<DateTime>> recentDownloads() => _backend.recentShareDownloads(uid);
 
   Future<void> maybeAutoBackup(MessagingService messaging) async {
     if (!await isEnabled()) return;
@@ -89,6 +118,7 @@ class BackupService {
   Future<void> disable() async {
     await _backend.delete(uid);
     await _store.delete(_codeKey);
+    await _store.delete(_shareKey);
     await _store.delete(_lastKey);
   }
 
@@ -98,8 +128,7 @@ class BackupService {
     if (!isValidRecoveryCode(code: recoveryCode)) throw const BackupException(BackupError.invalidCode);
     final blob = await _backend.getBlob(uid);
     if (blob == null) throw const BackupException(BackupError.noBackup);
-    final share = await _backend.getServerShare(uid);
-    if (share == null) throw const BackupException(BackupError.noServerShare);
+    final share = await _fetchShare();
     final Uint8List plain;
     try {
       plain = await backupOpen(recoveryCode: recoveryCode, serverShare: share, blob: blob);

@@ -11,7 +11,7 @@
 | 1 | R7: grupo trava após 30 dias offline ✅ | Baixa | Pequeno | `fix/r7-lacuna-de-commits` |
 | 2 | R4: esgotamento de KeyPackages ✅ | Média | Pequeno | `security/r4-keypackages` |
 | 3 | R5: limite de busca só no app ✅ | Média | Pequeno | `security/r5-limite-busca` |
-| 4 | R6: acesso ao backup | Baixa | Pequeno | `security/r6-acesso-backup` |
+| 4 | R6: acesso ao backup ✅ (e-mail depende de provedor) | Baixa | Pequeno | `security/r6-acesso-backup` |
 | 5 | R3: membro comum remove outros no MLS | Média | Grande | `security/r3-validacao-commits` |
 | 6 | R8: mensagens antigas em texto puro | Info | Mínimo | (ação do Owner) |
 | 7 | R9: criptografia pós-quântica | Info | Médio | `feat/r9-pos-quantico` (futuro) |
@@ -106,24 +106,31 @@
 - Supabase: `find_profile_by_nickname` ganhou a mesma lógica com trava consultiva (evita corrida no contador). O contador de buscas fica numa tabela sem nenhuma política, ilegível para clientes.
 - O limite do app (10/min) continua como primeira barreira; o do servidor é a que vale.
 
-## R6. Acesso indevido ao backup `[ ]`
+## R6. Acesso indevido ao backup `[x]`
 
 **Problema:** quem invade a conta consegue baixar o arquivo e a metade do servidor. Adivinhar o código de 260 bits continua inviável, então o foco é **detectar e dificultar o acesso à conta**, não contar tentativas.
 
 ### Etapa 1. Reautenticação
-- [ ] Exigir login recente (senha digitada nos últimos minutos) para baixar o backup e a metade do servidor.
-- [ ] Firebase: entregar a metade por Cloud Function que confere o horário do último login no token.
-- [ ] Supabase: mesma verificação numa função SQL ou Edge Function.
+- [x] Exigir login recente (senha digitada nos últimos minutos) para baixar o backup e a metade do servidor.
+- [x] Firebase: entregar a metade por Cloud Function que confere o horário do último login no token.
+- [x] Supabase: mesma verificação numa função SQL ou Edge Function.
 
 ### Etapa 2. Alerta ao dono
-- [ ] Enviar e-mail a cada download do backup ("Seu backup foi baixado em …").
-- [ ] Registrar data dos downloads e mostrar no app (tela de backup).
+- [~] Enviar e-mail a cada download do backup. **Entregue como push + registro no app**: o Firebase e o Supabase não enviam e-mails personalizados sem um provedor de e-mail (SMTP/Trigger Email) configurado por você. Quando houver um, basta ligá-lo ao mesmo evento (`backupDownloads` / `backup_downloads`).
+- [x] Registrar data dos downloads e mostrar no app (tela de backup).
 
 ### Etapa 3. Testes e documentação
-- [ ] Testes: download negado sem login recente; alerta disparado.
-- [ ] Atualizar `SEGURANCA.md` (R6 → corrigido).
+- [x] Testes: download negado sem login recente; alerta disparado.
+- [x] Atualizar `SEGURANCA.md` (R6 → corrigido).
 
 ---
+
+**Notas da implementação:**
+- Firebase: função chamável `getBackupShare` exige o `auth_time` do token com no máximo 5 minutos (senha digitada agora), tem limite de 5 por hora, registra cada entrega em `backupDownloads/{uid}` (somente leitura para o dono, impossível apagar) e manda push de alerta aos aparelhos do dono. Nas regras, **nem o dono lê `backupShares/` direto**.
+- Supabase: `get_backup_share()` lê o carimbo de login no `amr` do JWT, com os mesmos 5 minutos e 5 por hora; tabela de downloads sem permissão de escrita ou exclusão para clientes.
+- Decisão de desenho: o backup automático diário não pode pedir senha todo dia. O aparelho guarda a **própria cópia** da metade no cofre local (com o código, que já ficava lá), e só a **restauração em aparelho novo** passa pelo servidor. Quem ativou o backup antes dessa mudança é migrado sozinho na primeira vez que a função liberar a metade.
+- Na restauração, se o login for antigo o app pede a senha na própria tela e tenta de novo.
+- O registro de downloads aparece na tela do backup ("Downloads recentes da chave do servidor").
 
 ## R3. Membro comum consegue remover outros no grupo MLS `[ ]`
 
