@@ -3,6 +3,10 @@ import 'package:myapp/presentation/chat/view_models/chat_view_model.dart';
 import 'package:provider/provider.dart';
 import '../auth/view_models/auth_view_model.dart';
 import 'widgets/message_bubble_widget.dart';
+import '../../domain/repositories/profile_repository.dart';
+import '../profile/views/nickname_view.dart';
+import '../search/view_models/search_view_model.dart';
+import '../search/views/search_view.dart';
 
 class ChatRoomView extends StatefulWidget {
   const ChatRoomView({super.key});
@@ -83,11 +87,7 @@ class _ChatRoomViewState extends State<ChatRoomView> {
     if (currentUser != null) {
       final userName = authViewModel.displayName;
 
-      final didSend = await chatViewModel.sendMessage(
-        text: text,
-        userId: currentUser.uid,
-        userName: userName,
-      );
+      final didSend = await chatViewModel.sendMessage(text: text, userId: currentUser.uid, userName: userName);
 
       if (didSend && mounted) {
         _messageController.clear();
@@ -96,37 +96,23 @@ class _ChatRoomViewState extends State<ChatRoomView> {
   }
 
   Future<void> _handleEditName() async {
-    final authViewModel = context.read<AuthViewModel>();
-    final controller = TextEditingController(text: authViewModel.displayName);
+    final uid = context.read<AuthViewModel>().currentUser?.uid;
+    if (uid == null) return;
+    final profile = await context.read<ProfileRepository>().getProfile(uid);
+    if (!mounted || profile == null) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => NicknameView(current: profile)));
+  }
 
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Seu nome'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 30,
-          decoration: const InputDecoration(labelText: 'Nome'),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('Salvar'),
-          ),
-        ],
+  void _openSearch() {
+    final uid = context.read<AuthViewModel>().currentUser?.uid;
+    if (uid == null) return;
+    final profiles = context.read<ProfileRepository>();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            ChangeNotifierProvider(create: (_) => SearchViewModel(profiles, uid), child: const SearchView()),
       ),
     );
-    controller.dispose();
-
-    if (newName != null && newName.trim().isNotEmpty) {
-      await authViewModel.updateDisplayName(newName);
-    }
   }
 
   @override
@@ -146,16 +132,9 @@ class _ChatRoomViewState extends State<ChatRoomView> {
           centerTitle: true,
           title: const Text('Flugo Chat'),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: _handleEditName,
-              tooltip: 'Alterar nome',
-            ),
-            IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: () => authViewModel.signOut(),
-              tooltip: 'Logout',
-            ),
+            IconButton(icon: const Icon(Icons.person_search), onPressed: _openSearch, tooltip: 'Buscar pessoa'),
+            IconButton(icon: const Icon(Icons.edit), onPressed: _handleEditName, tooltip: 'Editar perfil'),
+            IconButton(icon: const Icon(Icons.logout), onPressed: () => authViewModel.signOut(), tooltip: 'Logout'),
           ],
         ),
         body: Column(
@@ -177,28 +156,18 @@ class _ChatRoomViewState extends State<ChatRoomView> {
                     )
                   : ListView.builder(
                       controller: _scrollController,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       itemCount: chatViewModel.messages.length,
                       itemBuilder: (context, index) {
                         final message = chatViewModel.messages[index];
                         final isMe = message.senderId == currentUser?.uid;
 
-                        return MessageBubbleWidget(
-                          message: message,
-                          isMe: isMe,
-                        );
+                        return MessageBubbleWidget(message: message, isMe: isMe);
                       },
                     ),
             ),
-            _buildMessageInput(
-              bottomInset,
-              isSending: chatViewModel.isSending,
-            ),
+            _buildMessageInput(bottomInset, isSending: chatViewModel.isSending),
           ],
         ),
       ),
@@ -212,9 +181,7 @@ class _ChatRoomViewState extends State<ChatRoomView> {
       padding: EdgeInsets.only(bottom: bottomInset > 0 ? 8 : 0),
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-        ),
+        decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -232,10 +199,7 @@ class _ChatRoomViewState extends State<ChatRoomView> {
                   ),
                   filled: true,
                   fillColor: Color(0xFFF1F3F5),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
                 onTap: _scheduleScrollToBottom,
                 onChanged: (_) {
@@ -251,10 +215,7 @@ class _ChatRoomViewState extends State<ChatRoomView> {
               height: 42,
               width: 42,
               child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: Color(0xFF111111),
-                  shape: BoxShape.circle,
-                ),
+                decoration: const BoxDecoration(color: Color(0xFF111111), shape: BoxShape.circle),
                 child: IconButton(
                   icon: isSending
                       ? const SizedBox(
@@ -262,16 +223,10 @@ class _ChatRoomViewState extends State<ChatRoomView> {
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
-                      : const Icon(
-                          Icons.send_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
+                      : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
                   onPressed: isSending ? null : _handleSendMessage,
                 ),
               ),

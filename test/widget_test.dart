@@ -4,9 +4,7 @@ import 'package:myapp/domain/entities/chat_message.dart';
 import 'package:myapp/presentation/chat/widgets/message_bubble_widget.dart';
 
 void main() {
-  testWidgets('Message bubble renders current user message details', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('Message bubble renders current user message details', (WidgetTester tester) async {
     final message = ChatMessage(
       id: '1',
       senderId: 'user-1',
@@ -15,9 +13,7 @@ void main() {
       timestamp: DateTime(2026, 3, 9, 14, 30).millisecondsSinceEpoch,
     );
 
-    await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: SizedBox())),
-    );
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -30,9 +26,7 @@ void main() {
     expect(find.text('14:30'), findsOneWidget);
   });
 
-  testWidgets('Message bubble renders sender name for other users', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('Message bubble renders sender name for other users', (WidgetTester tester) async {
     final message = ChatMessage(
       id: '2',
       senderId: 'user-2',
@@ -43,9 +37,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: MessageBubbleWidget(message: message, isMe: false),
-        ),
+        home: Scaffold(body: MessageBubbleWidget(message: message, isMe: false)),
       ),
     );
 

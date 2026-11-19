@@ -137,16 +137,17 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - [ ] Congelar a sala global `/messages`: feito na Etapa 4, quando as conversas cifradas a substituem.
 - **Pronto quando:** testes no Emulator provam que um usuário não lê dados de outro, e nenhuma tela importa `firebase_*` diretamente.
 
-### Etapa 2. Nickname único `[ ]`
-- [ ] Criar/editar nickname (3–20 caracteres, `a-z 0-9 _ .`, minúsculas).
-- [ ] Reserva atômica (transação) em `nicknames/{nick}`; trocar libera o antigo.
-- [ ] Usuários existentes escolhem nickname no próximo login.
+### Etapa 2. Nickname único `[x]`
+- [x] Criar/editar nickname (3–20 caracteres, `a-z 0-9 _ .`, minúsculas, nomes reservados bloqueados).
+- [x] Reserva atômica (update multi-caminho validado pelas regras) em `nicknames/{nick}`; trocar libera o antigo; não é possível liberar o nickname em uso.
+- [x] Usuários sem nickname são levados à tela de escolha no próximo login.
 - **Pronto quando:** dois usuários nunca conseguem o mesmo nickname, nem tentando ao mesmo tempo.
 
-### Etapa 3. Busca por nickname exato `[ ]`
-- [ ] Campo de busca: só retorna resultado se o nickname for **idêntico** (sem prefixo, sem sugestões).
-- [ ] Resultado mostra só nickname e nome de exibição; nunca e-mail ou uid.
-- [ ] Limite de buscas por minuto; bloquear e denunciar usuário.
+### Etapa 3. Busca por nickname exato `[x]`
+- [x] Busca só por nickname **idêntico**; as regras impedem listar `users` ou `nicknames`.
+- [x] Resultado mostra só nickname e nome de exibição; nunca e-mail.
+- [x] Limite de 10 buscas por minuto no app (+ App Check); bloquear/desbloquear (privado) e denunciar (somente escrita).
+- Limitação conhecida: um cliente modificado pode ignorar o limite do app. Para limite no servidor, mover a busca para uma Cloud Function (avaliar na Etapa 11).
 - **Pronto quando:** não há como listar usuários sem saber o nickname exato.
 
 ### Etapa 4. Conversas e grupos (estrutura) `[ ]`
