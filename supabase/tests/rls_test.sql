@@ -180,6 +180,28 @@ select t_count('select * from mls_messages where conversation_id = ''g_012345678
 delete from welcomes;
 select t_count('select * from welcomes', 0);
 
+\echo search limits
+select set_config('request.jwt.claims', json_build_object('sub', :'C')::text, false);
+select t_fail($$select * from find_profile_by_nickname('Maiusculo')$$, 'invalid_argument');
+select t_fail($$select * from find_profile_by_nickname('../x')$$, 'invalid_argument');
+select t_count($$select * from find_profile_by_nickname('carol')$$, 0);              -- yourself: looks like not found
+select t_count($$select * from find_profile_by_nickname('alice')$$, 1);
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+insert into blocks (user_id, blocked_id) values (:'B', :'C') on conflict do nothing;
+select set_config('request.jwt.claims', json_build_object('sub', :'C')::text, false);
+select t_count($$select * from find_profile_by_nickname('bobnovo')$$, 0);            -- bob blocked carol: hidden
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select t_count($$select * from find_profile_by_nickname('bobnovo')$$, 1);            -- others still find bob
+-- Carol has made 3 valid lookups so far (invalid input is not counted); the limit is 30 per hour.
+select set_config('request.jwt.claims', json_build_object('sub', :'C')::text, false);
+select count(*) from (select find_profile_by_nickname('nobodyhere' || g) from generate_series(1, 27) g) x;
+select t_fail($$select * from find_profile_by_nickname('alice')$$, 'rate_limited');
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select t_count($$select * from find_profile_by_nickname('bobnovo')$$, 1);            -- per user
+select t_fail('select * from search_log');                                          -- counters are server-only
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+delete from blocks where blocked_id = :'C';
+
 \echo rejoin
 select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
 insert into rejoin_requests (conversation_id, user_id) values (:'DIRECT', :'A');

@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 1 | R7: grupo trava após 30 dias offline ✅ | Baixa | Pequeno | `fix/r7-lacuna-de-commits` |
 | 2 | R4: esgotamento de KeyPackages ✅ | Média | Pequeno | `security/r4-keypackages` |
-| 3 | R5: limite de busca só no app | Média | Pequeno | `security/r5-limite-busca` |
+| 3 | R5: limite de busca só no app ✅ | Média | Pequeno | `security/r5-limite-busca` |
 | 4 | R6: acesso ao backup | Baixa | Pequeno | `security/r6-acesso-backup` |
 | 5 | R3: membro comum remove outros no MLS | Média | Grande | `security/r3-validacao-commits` |
 | 6 | R8: mensagens antigas em texto puro | Info | Mínimo | (ação do Owner) |
@@ -78,27 +78,33 @@
 - Descoberto no caminho: KeyPackages vencem em cerca de 90 dias. O app agora troca o pool inteiro a cada 45 dias e o de último recurso a cada 30, senão um convite poderia falhar para quem passa muito tempo sem abrir o app.
 - Limite escolhido: 10 convites por hora para a mesma pessoa. Quem precisar de mais pode ajustar `KP_CLAIMS_PER_HOUR` e o valor na função SQL.
 
-## R5. Limite de busca por nickname só no app `[ ]`
+## R5. Limite de busca por nickname só no app `[x]`
 
 **Problema:** um cliente modificado pode ignorar o limite e testar muitos nicknames.
 
 ### Etapa 1. Busca pelo servidor
-- [ ] Firebase: Cloud Function chamável `findByNickname` que retorna só nickname e nome de exibição.
-- [ ] Supabase: limite dentro de `find_profile_by_nickname`.
+- [x] Firebase: Cloud Function chamável `findByNickname` que retorna só nickname e nome de exibição.
+- [x] Supabase: limite dentro de `find_profile_by_nickname`.
 
 ### Etapa 2. Limite por usuário
-- [ ] Contador por usuário (ex.: 30 buscas/hora) e bloqueio temporário ao passar do limite.
-- [ ] Mensagem clara no app quando o limite do servidor for atingido.
+- [x] Contador por usuário (ex.: 30 buscas/hora) e bloqueio temporário ao passar do limite.
+- [x] Mensagem clara no app quando o limite do servidor for atingido.
 
 ### Etapa 3. Fechar o acesso direto
-- [ ] Firebase: regras deixam de permitir ler `nicknames/{nick}` diretamente (só a função lê).
-- [ ] Manter a leitura de `users/{uid}` apenas para quem compartilha conversa (avaliar).
+- [x] Firebase: regras deixam de permitir ler `nicknames/{nick}` diretamente (só a função lê).
+- [x] `users/{uid}` continua legível por uid (necessário para mostrar os nomes dos membros). Os uids são aleatórios e só se conhecem por conversas ou pela busca; listar `users` é negado. Restringir a quem compartilha conversa exigiria um índice de contatos e foi deixado de fora.
 
 ### Etapa 4. Testes e documentação
-- [ ] Testes: leitura direta negada, limite aplicado, busca exata continua funcionando.
-- [ ] Atualizar `SEGURANCA.md` (R5 → corrigido).
+- [x] Testes: leitura direta negada, limite aplicado, busca exata continua funcionando.
+- [x] Atualizar `SEGURANCA.md` (R5 → corrigido).
 
 ---
+
+**Notas da implementação:**
+- Firebase: função chamável `findByNickname` (App Check + e-mail verificado), limite de **30 buscas por hora por usuário**. Nem o dono consegue ler `nicknames/` direto. Não encontrado, "é você" e "a pessoa te bloqueou" retornam exatamente a mesma resposta (`null`), e toda busca válida conta no limite, inclusive as que não acham nada.
+- Descoberto no caminho: ao reservar um nickname, o app lia `nicknames/{nick}` para saber se já tinha dono. Com a leitura fechada, esse teste agora usa a própria função de busca (que também conta no limite).
+- Supabase: `find_profile_by_nickname` ganhou a mesma lógica com trava consultiva (evita corrida no contador). O contador de buscas fica numa tabela sem nenhuma política, ilegível para clientes.
+- O limite do app (10/min) continua como primeira barreira; o do servidor é a que vale.
 
 ## R6. Acesso indevido ao backup `[ ]`
 

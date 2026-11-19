@@ -63,15 +63,26 @@ test('cannot delete someone else nickname', async () => {
   await assertFails(set(ref(t.user('bob'), 'nicknames/alicenick'), null));
 });
 
-test('exact lookup works but listing users or nicknames does not', async () => {
+test('nicknames cannot be read directly (lookups go through the rate-limited function)', async () => {
   await update(ref(t.user('alice')), claim('alice', 'alicenick'));
   const db = t.user('bob');
-  await assertSucceeds(get(ref(db, 'nicknames/alicenick')));
-  await assertSucceeds(get(ref(db, 'users/alice')));
+  await assertFails(get(ref(db, 'nicknames/alicenick')));
   await assertFails(get(ref(db, 'nicknames')));
-  await assertFails(get(ref(db, 'users')));
+  await assertFails(get(ref(t.user('alice'), 'nicknames/alicenick')), 'not even the owner');
   await assertFails(get(ref(t.anon(), 'nicknames/alicenick')));
+});
+
+test('profiles are readable by uid but never listable', async () => {
+  await update(ref(t.user('alice')), claim('alice', 'alicenick'));
+  const db = t.user('bob');
+  await assertSucceeds(get(ref(db, 'users/alice')));
+  await assertFails(get(ref(db, 'users')));
   await assertFails(get(ref(t.user('carol', false), 'users/alice')));
+});
+
+test('claiming still works and still rejects duplicates without any read access', async () => {
+  await assertSucceeds(update(ref(t.user('alice')), claim('alice', 'dono2')));
+  await assertFails(update(ref(t.user('bob')), claim('bob', 'dono2')));
 });
 
 test('blocks are private to their owner', async () => {

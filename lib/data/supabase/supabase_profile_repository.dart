@@ -42,8 +42,13 @@ class SupabaseProfileRepository implements ProfileRepository {
 
   @override
   Future<UserProfile?> findByNickname(String nickname) async {
-    final rows = await _client.rpc<List<dynamic>>('find_profile_by_nickname', params: {'p_nickname': nickname});
-    return rows.isEmpty ? null : _map((rows.first as Map).cast<String, dynamic>());
+    try {
+      final rows = await _client.rpc<List<dynamic>>('find_profile_by_nickname', params: {'p_nickname': nickname});
+      return rows.isEmpty ? null : _map((rows.first as Map).cast<String, dynamic>());
+    } on PostgrestException catch (e) {
+      if (e.message.contains('rate_limited')) throw const RateLimitedException();
+      rethrow;
+    }
   }
 
   @override

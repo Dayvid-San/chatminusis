@@ -59,6 +59,8 @@ class SearchViewModel extends ChangeNotifier {
       // Never show yourself as a search result.
       _result = found?.uid == _myUid ? null : found;
       _state = _result == null ? SearchState.notFound : SearchState.found;
+    } on RateLimitedException {
+      _state = SearchState.rateLimited; // the server's own limit
     } catch (_) {
       _state = SearchState.error;
     }

@@ -9,6 +9,9 @@ class FakeProfileRepository implements ProfileRepository {
   final Map<String, Set<String>> blocks = {};
   final List<(String, String, String)> reports = [];
   int lookups = 0;
+
+  /// Simulates the server refusing lookups (its own, stricter limit).
+  bool serverRateLimited = false;
   final _blocksController = StreamController<void>.broadcast();
 
   @override
@@ -37,6 +40,7 @@ class FakeProfileRepository implements ProfileRepository {
 
   @override
   Future<UserProfile?> findByNickname(String nickname) async {
+    if (serverRateLimited) throw const RateLimitedException();
     lookups++;
     final uid = nicknames[nickname];
     return uid == null ? null : profiles[uid];

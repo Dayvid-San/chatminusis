@@ -6,7 +6,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 
-import { ServiceError, claimKeyPackageCore, requireVerified } from './core.js';
+import { ServiceError, claimKeyPackageCore, findByNicknameCore, requireVerified } from './core.js';
 import { buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune } from './lib.js';
 
 initializeApp();
@@ -79,5 +79,14 @@ export const claimKeyPackage = onCall(
     const caller = requireVerified(request.auth);
     const keyPackage = await claimKeyPackageCore(getDatabase(), caller, request.data?.uid);
     return { keyPackage };
+  }),
+);
+
+/** Rate-limited exact-nickname lookup (clients cannot read `nicknames` directly). */
+export const findByNickname = onCall(
+  { region: 'us-central1', enforceAppCheck: true },
+  guard(async (request) => {
+    const caller = requireVerified(request.auth);
+    return { profile: await findByNicknameCore(getDatabase(), caller, request.data?.nickname) };
   }),
 );

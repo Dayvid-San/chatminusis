@@ -1,15 +1,13 @@
 import 'dart:typed_data';
 
 import '../entities/conversation.dart';
+import '../errors.dart';
+
+export '../errors.dart' show RateLimitedException;
 
 /// Thrown when a commit lost the epoch race (someone else committed first).
 class EpochConflictException implements Exception {
   const EpochConflictException();
-}
-
-/// Too many KeyPackage claims for the same person in a short time.
-class RateLimitedException implements Exception {
-  const RateLimitedException();
 }
 
 /// Transport for E2EE conversations. The backend only stores and relays
