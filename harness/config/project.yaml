@@ -20,6 +20,7 @@ checks:                          # rodar antes de todo merge em develop
   - flutter test
   - (cd firebase && npm ci && npm test)   # regras do banco no emulador (Java 11+)
   - (cd functions && npm ci && npm test)  # lógica das Cloud Functions
+  - supabase/tests/run.sh                 # RLS do Supabase num PostgreSQL (PGHOST/PGPORT/PGUSER)
 
 checks_crypto:                   # obrigatório se tocar rust/ ou packages/chat_crypto_ffi/
   - cargo test --manifest-path rust/chat_crypto/Cargo.toml
@@ -34,6 +35,9 @@ security_review_required_paths:
   - rust/**
   - packages/chat_crypto_ffi/rust/**
   - deny.toml
+  - supabase/**
+  - functions/**
+  - firebase/database.rules.json
   - lib/data/services/**
   - database.rules.json
   - pubspec.yaml

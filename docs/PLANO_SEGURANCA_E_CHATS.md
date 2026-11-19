@@ -204,11 +204,14 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - O código fica salvo no cofre local do aparelho para permitir o backup automático (mesma proteção das chaves).
 - Limite de tentativas na entrega da metade do servidor: depende da autenticação da conta + App Check. Para um limite real por tentativas, mover a entrega para uma Cloud Function (pendência).
 
-### Etapa 11. Migração para Supabase `[ ]`
-- [ ] Implementar os repositórios com Supabase (Postgres + RLS + Realtime + Storage).
-- [ ] Testes de RLS equivalentes aos das regras do Firebase.
-- [ ] Migrar dados opacos (usuários, nicknames, KeyPackages, conversas, mensagens cifradas).
-- [ ] Avaliar Supabase auto-hospedado para reduzir metadados com terceiros.
+### Etapa 11. Supabase `[x]`
+- [x] Esquema Postgres com RLS e funções atômicas (`supabase/migrations`), equivalente às regras do Firebase e mais restrito na leitura de perfis (impossível listar).
+- [x] Testes das políticas num PostgreSQL real (`supabase/tests/run.sh`): perfis, KeyPackages de uso único, compare-and-set de época, admin, bloqueio, remoção, dados privados.
+- [x] Implementações Supabase de todos os repositórios do app (`lib/data/supabase`) e escolha do backend no build (`--dart-define=BACKEND=supabase`).
+- [x] Edge Function `notify` (push genérico) e retenção de 30 dias via `pg_cron`.
+- **Não testado contra um projeto Supabase real** (não há projeto/credenciais neste ambiente): os repositórios Dart foram verificados por análise estática; o esquema, por testes no Postgres.
+- Migração: contas do Supabase têm ids diferentes, então conversas e backups do Firebase não migram (ver `supabase/README.md`).
+- Auto-hospedagem do Supabase fica como opção para reduzir metadados com terceiros.
 
 ### Etapa 12. Auditoria contínua `[ ]`
 - [ ] Revisão do `security-reviewer` em toda etapa sensível.

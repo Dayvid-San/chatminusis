@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'core/security/app_lock.dart';
 import 'core/theme/app_theme.dart';
@@ -16,6 +17,11 @@ import 'data/firebase/firebase_backup_backend.dart';
 import 'data/firebase/firebase_conversation_backend.dart';
 import 'data/firebase/firebase_push_registry.dart';
 import 'data/local/file_secure_store.dart';
+import 'data/supabase/supabase_auth_repository.dart';
+import 'data/supabase/supabase_backup_backend.dart';
+import 'data/supabase/supabase_conversation_backend.dart';
+import 'data/supabase/supabase_profile_repository.dart';
+import 'data/supabase/supabase_push_registry.dart';
 import 'data/firebase/firebase_profile_repository.dart';
 import 'domain/entities/app_user.dart';
 import 'domain/repositories/auth_repository.dart';
@@ -64,6 +70,13 @@ class AuthGate extends StatelessWidget {
   }
 }
 
+/// Backend selection at build time:
+///   flutter run --dart-define=BACKEND=supabase --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_KEY=...
+/// Firebase stays initialized in both cases (push notifications use FCM).
+const _backend = String.fromEnvironment('BACKEND', defaultValue: 'firebase');
+const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const _supabaseKey = String.fromEnvironment('SUPABASE_KEY');
+
 Future<void> _activateAppCheck() async {
   // Release builds prove to the backend that requests come from the genuine
   // app on a genuine device. Debug builds use the debug provider (register the
@@ -82,19 +95,34 @@ Future<void> main() async {
   final appLock = AppLock(authenticator: LocalDeviceAuthenticator(), flags: SecureFlagStore());
   await appLock.load();
 
+  final useSupabase = _backend == 'supabase';
+  if (useSupabase) {
+    await Supabase.initialize(url: _supabaseUrl, publishableKey: _supabaseKey);
+  }
+  final db = FirebaseDatabase.instance;
+  final sb = useSupabase ? Supabase.instance.client : null;
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppTheme()),
         ChangeNotifierProvider<AppLock>.value(value: appLock),
-        Provider<AuthRepository>(create: (_) => FirebaseAuthRepository(FirebaseAuth.instance)),
-        Provider<ConversationBackend>(create: (_) => FirebaseConversationBackend(FirebaseDatabase.instance)),
-        Provider<SecureStoreFactory>.value(value: FileSecureStore.open),
-        Provider<BackupBackend>(create: (_) => FirebaseBackupBackend(FirebaseDatabase.instance)),
-        Provider<PushRegistry>(
-          create: (_) => FirebasePushRegistry(FirebaseDatabase.instance, FirebaseMessaging.instance),
+        Provider<AuthRepository>(
+          create: (_) => sb != null ? SupabaseAuthRepository(sb) : FirebaseAuthRepository(FirebaseAuth.instance),
         ),
-        Provider<ProfileRepository>(create: (_) => FirebaseProfileRepository(FirebaseDatabase.instance)),
+        Provider<ProfileRepository>(
+          create: (_) => sb != null ? SupabaseProfileRepository(sb) : FirebaseProfileRepository(db),
+        ),
+        Provider<ConversationBackend>(
+          create: (_) => sb != null ? SupabaseConversationBackend(sb) : FirebaseConversationBackend(db),
+        ),
+        Provider<BackupBackend>(create: (_) => sb != null ? SupabaseBackupBackend(sb) : FirebaseBackupBackend(db)),
+        Provider<PushRegistry>(
+          create: (_) => sb != null
+              ? SupabasePushRegistry(sb, FirebaseMessaging.instance)
+              : FirebasePushRegistry(db, FirebaseMessaging.instance),
+        ),
+        Provider<SecureStoreFactory>.value(value: FileSecureStore.open),
         ChangeNotifierProvider<AuthViewModel>(create: (context) => AuthViewModel(context.read<AuthRepository>())),
         ChangeNotifierProvider<ProfileViewModel>(
           create: (context) => ProfileViewModel(context.read<ProfileRepository>(), context.read<AuthRepository>()),
