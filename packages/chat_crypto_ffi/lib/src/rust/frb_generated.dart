@@ -4,14 +4,11 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api/client.dart';
-
 import 'dart:async';
 import 'dart:convert';
-
 import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
-
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Main entrypoint of the Rust API
@@ -69,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1728296447;
+  int get rustContentHash => 1879295991;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -81,10 +78,15 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<AddMembersResult> crateApiClientChatCryptoClientAddMembers({
+  Future<CommitResult> crateApiClientChatCryptoClientAddMembers({
     required ChatCryptoClient that,
     required List<int> groupId,
     required List<Uint8List> keyPackages,
+  });
+
+  Future<void> crateApiClientChatCryptoClientClearPendingCommit({
+    required ChatCryptoClient that,
+    required List<int> groupId,
   });
 
   ChatCryptoClient crateApiClientChatCryptoClientCreate({
@@ -92,6 +94,11 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Future<void> crateApiClientChatCryptoClientCreateGroup({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  });
+
+  Future<void> crateApiClientChatCryptoClientDeleteGroup({
     required ChatCryptoClient that,
     required List<int> groupId,
   });
@@ -112,8 +119,27 @@ abstract class RustLibApi extends BaseApi {
     required List<int> groupId,
   });
 
+  Future<Uint8List> crateApiClientChatCryptoClientExportState({
+    required ChatCryptoClient that,
+    required List<int> key,
+  });
+
   Future<Uint8List> crateApiClientChatCryptoClientGenerateKeyPackage({
     required ChatCryptoClient that,
+  });
+
+  Future<List<Uint8List>> crateApiClientChatCryptoClientGenerateKeyPackages({
+    required ChatCryptoClient that,
+    required int count,
+  });
+
+  List<Uint8List> crateApiClientChatCryptoClientGroupIds({
+    required ChatCryptoClient that,
+  });
+
+  bool crateApiClientChatCryptoClientHasGroup({
+    required ChatCryptoClient that,
+    required List<int> groupId,
   });
 
   Uint8List crateApiClientChatCryptoClientIdentity({
@@ -125,7 +151,17 @@ abstract class RustLibApi extends BaseApi {
     required List<int> welcome,
   });
 
+  List<MemberKey> crateApiClientChatCryptoClientMemberKeys({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  });
+
   List<Uint8List> crateApiClientChatCryptoClientMembers({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  });
+
+  Future<void> crateApiClientChatCryptoClientMergePendingCommit({
     required ChatCryptoClient that,
     required List<int> groupId,
   });
@@ -136,17 +172,64 @@ abstract class RustLibApi extends BaseApi {
     required List<int> message,
   });
 
-  Future<Uint8List> crateApiClientChatCryptoClientRemoveMembers({
+  Future<CommitResult> crateApiClientChatCryptoClientRemoveMembers({
     required ChatCryptoClient that,
     required List<int> groupId,
     required List<Uint8List> identities,
+  });
+
+  Future<ChatCryptoClient> crateApiClientChatCryptoClientRestore({
+    required List<int> state,
+    required List<int> key,
+  });
+
+  Future<CommitResult> crateApiClientChatCryptoClientSelfUpdate({
+    required ChatCryptoClient that,
+    required List<int> groupId,
   });
 
   Uint8List crateApiClientChatCryptoClientSignaturePublicKey({
     required ChatCryptoClient that,
   });
 
+  Future<Uint8List> crateApiClientBackupOpen({
+    required String recoveryCode,
+    required List<int> serverShare,
+    required List<int> blob,
+  });
+
+  Future<Uint8List> crateApiClientBackupSeal({
+    required String recoveryCode,
+    required List<int> serverShare,
+    required List<int> plaintext,
+  });
+
+  String crateApiClientGenerateRecoveryCode();
+
   Future<void> crateApiClientInitApp();
+
+  bool crateApiClientIsValidRecoveryCode({required String code});
+
+  Uint8List crateApiClientRandomBytes({required int len});
+
+  Future<String> crateApiClientSafetyNumber({
+    required List<int> myIdentity,
+    required List<int> myKey,
+    required List<int> theirIdentity,
+    required List<int> theirKey,
+  });
+
+  Future<Uint8List> crateApiClientVaultOpen({
+    required List<int> key,
+    required List<int> context,
+    required List<int> sealed,
+  });
+
+  Future<Uint8List> crateApiClientVaultSeal({
+    required List<int> key,
+    required List<int> context,
+    required List<int> plaintext,
+  });
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_ChatCryptoClient;
@@ -167,7 +250,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<AddMembersResult> crateApiClientChatCryptoClientAddMembers({
+  Future<CommitResult> crateApiClientChatCryptoClientAddMembers({
     required ChatCryptoClient that,
     required List<int> groupId,
     required List<Uint8List> keyPackages,
@@ -190,7 +273,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_add_members_result,
+          decodeSuccessData: sse_decode_commit_result,
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiClientChatCryptoClientAddMembersConstMeta,
@@ -207,6 +290,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiClientChatCryptoClientClearPendingCommit({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(groupId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientClearPendingCommitConstMeta,
+        argValues: [that, groupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiClientChatCryptoClientClearPendingCommitConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_clear_pending_commit",
+        argNames: ["that", "groupId"],
+      );
+
+  @override
   ChatCryptoClient crateApiClientChatCryptoClientCreate({
     required List<int> identity,
   }) {
@@ -215,7 +337,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(identity, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -252,7 +374,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 4,
             port: port_,
           );
         },
@@ -270,6 +392,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiClientChatCryptoClientCreateGroupConstMeta =>
       const TaskConstMeta(
         debugName: "ChatCryptoClient_create_group",
+        argNames: ["that", "groupId"],
+      );
+
+  @override
+  Future<void> crateApiClientChatCryptoClientDeleteGroup({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(groupId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientDeleteGroupConstMeta,
+        argValues: [that, groupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientChatCryptoClientDeleteGroupConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_delete_group",
         argNames: ["that", "groupId"],
       );
 
@@ -292,7 +452,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 6,
             port: port_,
           );
         },
@@ -327,7 +487,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_list_prim_u_8_loose(groupId, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -360,7 +520,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_list_prim_u_8_loose(groupId, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -381,6 +541,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<Uint8List> crateApiClientChatCryptoClientExportState({
+    required ChatCryptoClient that,
+    required List<int> key,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(key, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientExportStateConstMeta,
+        argValues: [that, key],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientChatCryptoClientExportStateConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_export_state",
+        argNames: ["that", "key"],
+      );
+
+  @override
   Future<Uint8List> crateApiClientChatCryptoClientGenerateKeyPackage({
     required ChatCryptoClient that,
   }) {
@@ -395,7 +593,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 10,
             port: port_,
           );
         },
@@ -418,6 +616,109 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<Uint8List>> crateApiClientChatCryptoClientGenerateKeyPackages({
+    required ChatCryptoClient that,
+    required int count,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_u_32(count, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientGenerateKeyPackagesConstMeta,
+        argValues: [that, count],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiClientChatCryptoClientGenerateKeyPackagesConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_generate_key_packages",
+        argNames: ["that", "count"],
+      );
+
+  @override
+  List<Uint8List> crateApiClientChatCryptoClientGroupIds({
+    required ChatCryptoClient that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientGroupIdsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientChatCryptoClientGroupIdsConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_group_ids",
+        argNames: ["that"],
+      );
+
+  @override
+  bool crateApiClientChatCryptoClientHasGroup({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(groupId, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientHasGroupConstMeta,
+        argValues: [that, groupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientChatCryptoClientHasGroupConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_has_group",
+        argNames: ["that", "groupId"],
+      );
+
+  @override
   Uint8List crateApiClientChatCryptoClientIdentity({
     required ChatCryptoClient that,
   }) {
@@ -429,7 +730,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -465,7 +766,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 15,
             port: port_,
           );
         },
@@ -487,6 +788,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  List<MemberKey> crateApiClientChatCryptoClientMemberKeys({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(groupId, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_member_key,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientMemberKeysConstMeta,
+        argValues: [that, groupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientChatCryptoClientMemberKeysConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_member_keys",
+        argNames: ["that", "groupId"],
+      );
+
+  @override
   List<Uint8List> crateApiClientChatCryptoClientMembers({
     required ChatCryptoClient that,
     required List<int> groupId,
@@ -500,7 +834,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_list_prim_u_8_loose(groupId, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_list_prim_u_8_strict,
@@ -516,6 +850,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiClientChatCryptoClientMembersConstMeta =>
       const TaskConstMeta(
         debugName: "ChatCryptoClient_members",
+        argNames: ["that", "groupId"],
+      );
+
+  @override
+  Future<void> crateApiClientChatCryptoClientMergePendingCommit({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(groupId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientMergePendingCommitConstMeta,
+        argValues: [that, groupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiClientChatCryptoClientMergePendingCommitConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_merge_pending_commit",
         argNames: ["that", "groupId"],
       );
 
@@ -538,7 +911,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 19,
             port: port_,
           );
         },
@@ -560,7 +933,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<Uint8List> crateApiClientChatCryptoClientRemoveMembers({
+  Future<CommitResult> crateApiClientChatCryptoClientRemoveMembers({
     required ChatCryptoClient that,
     required List<int> groupId,
     required List<Uint8List> identities,
@@ -578,12 +951,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 20,
             port: port_,
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeSuccessData: sse_decode_commit_result,
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiClientChatCryptoClientRemoveMembersConstMeta,
@@ -600,6 +973,80 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<ChatCryptoClient> crateApiClientChatCryptoClientRestore({
+    required List<int> state,
+    required List<int> key,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(state, serializer);
+          sse_encode_list_prim_u_8_loose(key, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientRestoreConstMeta,
+        argValues: [state, key],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientChatCryptoClientRestoreConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_restore",
+        argNames: ["state", "key"],
+      );
+
+  @override
+  Future<CommitResult> crateApiClientChatCryptoClientSelfUpdate({
+    required ChatCryptoClient that,
+    required List<int> groupId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerChatCryptoClient(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(groupId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_commit_result,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientChatCryptoClientSelfUpdateConstMeta,
+        argValues: [that, groupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientChatCryptoClientSelfUpdateConstMeta =>
+      const TaskConstMeta(
+        debugName: "ChatCryptoClient_self_update",
+        argNames: ["that", "groupId"],
+      );
+
+  @override
   Uint8List crateApiClientChatCryptoClientSignaturePublicKey({
     required ChatCryptoClient that,
   }) {
@@ -611,7 +1058,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -632,6 +1079,100 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<Uint8List> crateApiClientBackupOpen({
+    required String recoveryCode,
+    required List<int> serverShare,
+    required List<int> blob,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(recoveryCode, serializer);
+          sse_encode_list_prim_u_8_loose(serverShare, serializer);
+          sse_encode_list_prim_u_8_loose(blob, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientBackupOpenConstMeta,
+        argValues: [recoveryCode, serverShare, blob],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientBackupOpenConstMeta => const TaskConstMeta(
+    debugName: "backup_open",
+    argNames: ["recoveryCode", "serverShare", "blob"],
+  );
+
+  @override
+  Future<Uint8List> crateApiClientBackupSeal({
+    required String recoveryCode,
+    required List<int> serverShare,
+    required List<int> plaintext,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(recoveryCode, serializer);
+          sse_encode_list_prim_u_8_loose(serverShare, serializer);
+          sse_encode_list_prim_u_8_loose(plaintext, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientBackupSealConstMeta,
+        argValues: [recoveryCode, serverShare, plaintext],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientBackupSealConstMeta => const TaskConstMeta(
+    debugName: "backup_seal",
+    argNames: ["recoveryCode", "serverShare", "plaintext"],
+  );
+
+  @override
+  String crateApiClientGenerateRecoveryCode() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientGenerateRecoveryCodeConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientGenerateRecoveryCodeConstMeta =>
+      const TaskConstMeta(debugName: "generate_recovery_code", argNames: []);
+
+  @override
   Future<void> crateApiClientInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -640,7 +1181,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 27,
             port: port_,
           );
         },
@@ -657,6 +1198,165 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiClientInitAppConstMeta =>
       const TaskConstMeta(debugName: "init_app", argNames: []);
+
+  @override
+  bool crateApiClientIsValidRecoveryCode({required String code}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(code, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientIsValidRecoveryCodeConstMeta,
+        argValues: [code],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientIsValidRecoveryCodeConstMeta =>
+      const TaskConstMeta(
+        debugName: "is_valid_recovery_code",
+        argNames: ["code"],
+      );
+
+  @override
+  Uint8List crateApiClientRandomBytes({required int len}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(len, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientRandomBytesConstMeta,
+        argValues: [len],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientRandomBytesConstMeta =>
+      const TaskConstMeta(debugName: "random_bytes", argNames: ["len"]);
+
+  @override
+  Future<String> crateApiClientSafetyNumber({
+    required List<int> myIdentity,
+    required List<int> myKey,
+    required List<int> theirIdentity,
+    required List<int> theirKey,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(myIdentity, serializer);
+          sse_encode_list_prim_u_8_loose(myKey, serializer);
+          sse_encode_list_prim_u_8_loose(theirIdentity, serializer);
+          sse_encode_list_prim_u_8_loose(theirKey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientSafetyNumberConstMeta,
+        argValues: [myIdentity, myKey, theirIdentity, theirKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientSafetyNumberConstMeta => const TaskConstMeta(
+    debugName: "safety_number",
+    argNames: ["myIdentity", "myKey", "theirIdentity", "theirKey"],
+  );
+
+  @override
+  Future<Uint8List> crateApiClientVaultOpen({
+    required List<int> key,
+    required List<int> context,
+    required List<int> sealed,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(key, serializer);
+          sse_encode_list_prim_u_8_loose(context, serializer);
+          sse_encode_list_prim_u_8_loose(sealed, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientVaultOpenConstMeta,
+        argValues: [key, context, sealed],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientVaultOpenConstMeta => const TaskConstMeta(
+    debugName: "vault_open",
+    argNames: ["key", "context", "sealed"],
+  );
+
+  @override
+  Future<Uint8List> crateApiClientVaultSeal({
+    required List<int> key,
+    required List<int> context,
+    required List<int> plaintext,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(key, serializer);
+          sse_encode_list_prim_u_8_loose(context, serializer);
+          sse_encode_list_prim_u_8_loose(plaintext, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClientVaultSealConstMeta,
+        argValues: [key, context, plaintext],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientVaultSealConstMeta => const TaskConstMeta(
+    debugName: "vault_seal",
+    argNames: ["key", "context", "plaintext"],
+  );
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_ChatCryptoClient => wire
@@ -715,21 +1415,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  AddMembersResult dco_decode_add_members_result(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return AddMembersResult(
-      commit: dco_decode_list_prim_u_8_strict(arr[0]),
-      welcome: dco_decode_list_prim_u_8_strict(arr[1]),
-    );
-  }
-
-  @protected
   bool dco_decode_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
+  }
+
+  @protected
+  CommitResult dco_decode_commit_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return CommitResult(
+      commit: dco_decode_list_prim_u_8_strict(arr[0]),
+      welcome: dco_decode_opt_list_prim_u_8_strict(arr[1]),
+      newEpoch: dco_decode_u_64(arr[2]),
+    );
   }
 
   @protected
@@ -765,6 +1466,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<MemberKey> dco_decode_list_member_key(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_member_key).toList();
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -774,6 +1481,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  MemberKey dco_decode_member_key(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return MemberKey(
+      identity: dco_decode_list_prim_u_8_strict(arr[0]),
+      signatureKey: dco_decode_list_prim_u_8_strict(arr[1]),
+    );
+  }
+
+  @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_prim_u_8_strict(raw);
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -863,17 +1594,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  AddMembersResult sse_decode_add_members_result(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_commit = sse_decode_list_prim_u_8_strict(deserializer);
-    var var_welcome = sse_decode_list_prim_u_8_strict(deserializer);
-    return AddMembersResult(commit: var_commit, welcome: var_welcome);
-  }
-
-  @protected
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  CommitResult sse_decode_commit_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_commit = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_welcome = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    var var_newEpoch = sse_decode_u_64(deserializer);
+    return CommitResult(
+      commit: var_commit,
+      welcome: var_welcome,
+      newEpoch: var_newEpoch,
+    );
   }
 
   @protected
@@ -919,6 +1655,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<MemberKey> sse_decode_list_member_key(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <MemberKey>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_member_key(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -930,6 +1678,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  MemberKey sse_decode_member_key(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_identity = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_signatureKey = sse_decode_list_prim_u_8_strict(deserializer);
+    return MemberKey(identity: var_identity, signatureKey: var_signatureKey);
+  }
+
+  @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_prim_u_8_strict(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
   }
 
   @protected
@@ -1023,19 +1796,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_add_members_result(
-    AddMembersResult self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_prim_u_8_strict(self.commit, serializer);
-    sse_encode_list_prim_u_8_strict(self.welcome, serializer);
-  }
-
-  @protected
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_commit_result(CommitResult self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(self.commit, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.welcome, serializer);
+    sse_encode_u_64(self.newEpoch, serializer);
   }
 
   @protected
@@ -1075,6 +1846,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_member_key(
+    List<MemberKey> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_member_key(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_loose(
     List<int> self,
     SseSerializer serializer,
@@ -1094,6 +1877,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_member_key(MemberKey self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(self.identity, serializer);
+    sse_encode_list_prim_u_8_strict(self.signatureKey, serializer);
+  }
+
+  @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_prim_u_8_strict(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
   }
 
   @protected
@@ -1143,7 +1952,7 @@ class ChatCryptoClientImpl extends RustOpaque implements ChatCryptoClient {
         .rust_arc_decrement_strong_count_ChatCryptoClientPtr,
   );
 
-  Future<AddMembersResult> addMembers({
+  Future<CommitResult> addMembers({
     required List<int> groupId,
     required List<Uint8List> keyPackages,
   }) => RustLib.instance.api.crateApiClientChatCryptoClientAddMembers(
@@ -1152,8 +1961,17 @@ class ChatCryptoClientImpl extends RustOpaque implements ChatCryptoClient {
     keyPackages: keyPackages,
   );
 
+  Future<void> clearPendingCommit({required List<int> groupId}) =>
+      RustLib.instance.api.crateApiClientChatCryptoClientClearPendingCommit(
+        that: this,
+        groupId: groupId,
+      );
+
   Future<void> createGroup({required List<int> groupId}) => RustLib.instance.api
       .crateApiClientChatCryptoClientCreateGroup(that: this, groupId: groupId);
+
+  Future<void> deleteGroup({required List<int> groupId}) => RustLib.instance.api
+      .crateApiClientChatCryptoClientDeleteGroup(that: this, groupId: groupId);
 
   Future<Uint8List> encrypt({
     required List<int> groupId,
@@ -1173,8 +1991,25 @@ class ChatCryptoClientImpl extends RustOpaque implements ChatCryptoClient {
         groupId: groupId,
       );
 
+  Future<Uint8List> exportState({required List<int> key}) => RustLib
+      .instance
+      .api
+      .crateApiClientChatCryptoClientExportState(that: this, key: key);
+
   Future<Uint8List> generateKeyPackage() => RustLib.instance.api
       .crateApiClientChatCryptoClientGenerateKeyPackage(that: this);
+
+  Future<List<Uint8List>> generateKeyPackages({required int count}) =>
+      RustLib.instance.api.crateApiClientChatCryptoClientGenerateKeyPackages(
+        that: this,
+        count: count,
+      );
+
+  List<Uint8List> groupIds() =>
+      RustLib.instance.api.crateApiClientChatCryptoClientGroupIds(that: this);
+
+  bool hasGroup({required List<int> groupId}) => RustLib.instance.api
+      .crateApiClientChatCryptoClientHasGroup(that: this, groupId: groupId);
 
   Uint8List get identity =>
       RustLib.instance.api.crateApiClientChatCryptoClientIdentity(that: this);
@@ -1184,8 +2019,19 @@ class ChatCryptoClientImpl extends RustOpaque implements ChatCryptoClient {
       .api
       .crateApiClientChatCryptoClientJoinGroup(that: this, welcome: welcome);
 
+  List<MemberKey> memberKeys({required List<int> groupId}) => RustLib
+      .instance
+      .api
+      .crateApiClientChatCryptoClientMemberKeys(that: this, groupId: groupId);
+
   List<Uint8List> members({required List<int> groupId}) => RustLib.instance.api
       .crateApiClientChatCryptoClientMembers(that: this, groupId: groupId);
+
+  Future<void> mergePendingCommit({required List<int> groupId}) =>
+      RustLib.instance.api.crateApiClientChatCryptoClientMergePendingCommit(
+        that: this,
+        groupId: groupId,
+      );
 
   Future<IncomingMessage> process({
     required List<int> groupId,
@@ -1196,7 +2042,7 @@ class ChatCryptoClientImpl extends RustOpaque implements ChatCryptoClient {
     message: message,
   );
 
-  Future<Uint8List> removeMembers({
+  Future<CommitResult> removeMembers({
     required List<int> groupId,
     required List<Uint8List> identities,
   }) => RustLib.instance.api.crateApiClientChatCryptoClientRemoveMembers(
@@ -1204,6 +2050,11 @@ class ChatCryptoClientImpl extends RustOpaque implements ChatCryptoClient {
     groupId: groupId,
     identities: identities,
   );
+
+  Future<CommitResult> selfUpdate({required List<int> groupId}) => RustLib
+      .instance
+      .api
+      .crateApiClientChatCryptoClientSelfUpdate(that: this, groupId: groupId);
 
   Uint8List get signaturePublicKey => RustLib.instance.api
       .crateApiClientChatCryptoClientSignaturePublicKey(that: this);

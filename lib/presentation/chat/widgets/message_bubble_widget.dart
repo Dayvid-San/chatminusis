@@ -1,51 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../domain/entities/chat_message.dart';
+import '../../../domain/entities/conversation.dart';
 
 class MessageBubbleWidget extends StatelessWidget {
-  final ChatMessage message;
+  final DecryptedMessage message;
   final bool isMe;
 
-  const MessageBubbleWidget({
-    super.key,
-    required this.message,
-    required this.isMe,
-  });
+  /// Shown above messages from other people (group chats).
+  final String? senderName;
+
+  const MessageBubbleWidget({super.key, required this.message, required this.isMe, this.senderName});
 
   @override
   Widget build(BuildContext context) {
-    final formattedTime = DateFormat(
-      'HH:mm',
-    ).format(DateTime.fromMillisecondsSinceEpoch(message.timestamp));
-    final bubbleColor = isMe
-        ? const Color(0xFF111111)
-        : const Color(0xFFF1F3F5);
+    final formattedTime = DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(message.timestamp));
+    final bubbleColor = isMe ? const Color(0xFF111111) : const Color(0xFFF1F3F5);
     final textColor = isMe ? Colors.white : const Color(0xFF111111);
     final timeColor = isMe ? Colors.white70 : const Color(0xFF6B7280);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
-        crossAxisAlignment: isMe
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2, left: 2, right: 2),
-            child: Text(
-              isMe ? 'You' : message.senderName,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF6B7280),
-                fontWeight: FontWeight.w500,
+          if (isMe || senderName != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2, left: 2, right: 2),
+              child: Text(
+                isMe ? 'Você' : senderName!,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w500),
               ),
             ),
-          ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.78,
-            ),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
             decoration: BoxDecoration(
               color: bubbleColor,
               borderRadius: BorderRadius.only(
@@ -58,13 +46,10 @@ class MessageBubbleWidget extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  message.text,
-                  style: TextStyle(color: textColor, fontSize: 15, height: 1.3),
-                ),
+                Text(message.text, style: TextStyle(color: textColor, fontSize: 15, height: 1.3)),
                 const SizedBox(height: 3),
                 Text(
-                  formattedTime,
+                  message.expiresAt == null ? formattedTime : '⏱ $formattedTime',
                   style: TextStyle(color: timeColor, fontSize: 10),
                 ),
               ],

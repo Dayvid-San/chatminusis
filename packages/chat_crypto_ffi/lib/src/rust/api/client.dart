@@ -4,15 +4,84 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
-
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+
+// These functions are ignored because they are not marked as `pub`: `commit`
+
+/// Secure random bytes from the OS.
+Uint8List randomBytes({required int len}) =>
+    RustLib.instance.api.crateApiClientRandomBytes(len: len);
+
+/// AES-256-GCM seal for local data. `context` is authenticated (e.g. file name).
+Future<Uint8List> vaultSeal({
+  required List<int> key,
+  required List<int> context,
+  required List<int> plaintext,
+}) => RustLib.instance.api.crateApiClientVaultSeal(
+  key: key,
+  context: context,
+  plaintext: plaintext,
+);
+
+Future<Uint8List> vaultOpen({
+  required List<int> key,
+  required List<int> context,
+  required List<int> sealed,
+}) => RustLib.instance.api.crateApiClientVaultOpen(
+  key: key,
+  context: context,
+  sealed: sealed,
+);
+
+/// 60-digit safety number, identical on both sides.
+Future<String> safetyNumber({
+  required List<int> myIdentity,
+  required List<int> myKey,
+  required List<int> theirIdentity,
+  required List<int> theirKey,
+}) => RustLib.instance.api.crateApiClientSafetyNumber(
+  myIdentity: myIdentity,
+  myKey: myKey,
+  theirIdentity: theirIdentity,
+  theirKey: theirKey,
+);
+
+/// New 260-bit recovery code (52 characters in groups of 4).
+String generateRecoveryCode() =>
+    RustLib.instance.api.crateApiClientGenerateRecoveryCode();
+
+bool isValidRecoveryCode({required String code}) =>
+    RustLib.instance.api.crateApiClientIsValidRecoveryCode(code: code);
+
+/// Encrypts a backup: needs the recovery code AND the 32-byte server share.
+Future<Uint8List> backupSeal({
+  required String recoveryCode,
+  required List<int> serverShare,
+  required List<int> plaintext,
+}) => RustLib.instance.api.crateApiClientBackupSeal(
+  recoveryCode: recoveryCode,
+  serverShare: serverShare,
+  plaintext: plaintext,
+);
+
+Future<Uint8List> backupOpen({
+  required String recoveryCode,
+  required List<int> serverShare,
+  required List<int> blob,
+}) => RustLib.instance.api.crateApiClientBackupOpen(
+  recoveryCode: recoveryCode,
+  serverShare: serverShare,
+  blob: blob,
+);
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ChatCryptoClient>>
 abstract class ChatCryptoClient implements RustOpaqueInterface {
-  Future<AddMembersResult> addMembers({
+  Future<CommitResult> addMembers({
     required List<int> groupId,
     required List<Uint8List> keyPackages,
   });
+
+  Future<void> clearPendingCommit({required List<int> groupId});
 
   static ChatCryptoClient create({required List<int> identity}) => RustLib
       .instance
@@ -20,6 +89,8 @@ abstract class ChatCryptoClient implements RustOpaqueInterface {
       .crateApiClientChatCryptoClientCreate(identity: identity);
 
   Future<void> createGroup({required List<int> groupId});
+
+  Future<void> deleteGroup({required List<int> groupId});
 
   Future<Uint8List> encrypt({
     required List<int> groupId,
@@ -30,46 +101,75 @@ abstract class ChatCryptoClient implements RustOpaqueInterface {
 
   Uint8List epochAuthenticator({required List<int> groupId});
 
+  Future<Uint8List> exportState({required List<int> key});
+
   Future<Uint8List> generateKeyPackage();
+
+  Future<List<Uint8List>> generateKeyPackages({required int count});
+
+  List<Uint8List> groupIds();
+
+  bool hasGroup({required List<int> groupId});
 
   Uint8List get identity;
 
   Future<Uint8List> joinGroup({required List<int> welcome});
 
+  List<MemberKey> memberKeys({required List<int> groupId});
+
   List<Uint8List> members({required List<int> groupId});
+
+  Future<void> mergePendingCommit({required List<int> groupId});
 
   Future<IncomingMessage> process({
     required List<int> groupId,
     required List<int> message,
   });
 
-  Future<Uint8List> removeMembers({
+  Future<CommitResult> removeMembers({
     required List<int> groupId,
     required List<Uint8List> identities,
   });
 
+  /// Restores a client sealed with `export_state` (key: 32 bytes from the keystore).
+  static Future<ChatCryptoClient> restore({
+    required List<int> state,
+    required List<int> key,
+  }) => RustLib.instance.api.crateApiClientChatCryptoClientRestore(
+    state: state,
+    key: key,
+  );
+
+  Future<CommitResult> selfUpdate({required List<int> groupId});
+
   Uint8List get signaturePublicKey;
 }
 
-class AddMembersResult {
-  /// Send to the members already in the group.
+/// Pending commit to publish; call `merge_pending_commit` once the server accepts it.
+class CommitResult {
   final Uint8List commit;
 
-  /// Send to the newly added members.
-  final Uint8List welcome;
+  /// Present when members were added: send to them.
+  final Uint8List? welcome;
+  final BigInt newEpoch;
 
-  const AddMembersResult({required this.commit, required this.welcome});
+  const CommitResult({
+    required this.commit,
+    this.welcome,
+    required this.newEpoch,
+  });
 
   @override
-  int get hashCode => commit.hashCode ^ welcome.hashCode;
+  int get hashCode => commit.hashCode ^ welcome.hashCode ^ newEpoch.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AddMembersResult &&
+      other is CommitResult &&
           runtimeType == other.runtimeType &&
           commit == other.commit &&
-          welcome == other.welcome;
+          welcome == other.welcome &&
+          newEpoch == other.newEpoch;
 }
 
 /// Kind of a processed incoming group message.
@@ -116,4 +216,22 @@ class IncomingMessage {
           sender == other.sender &&
           plaintext == other.plaintext &&
           stillMember == other.stillMember;
+}
+
+class MemberKey {
+  final Uint8List identity;
+  final Uint8List signatureKey;
+
+  const MemberKey({required this.identity, required this.signatureKey});
+
+  @override
+  int get hashCode => identity.hashCode ^ signatureKey.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MemberKey &&
+          runtimeType == other.runtimeType &&
+          identity == other.identity &&
+          signatureKey == other.signatureKey;
 }

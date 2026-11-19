@@ -80,10 +80,7 @@ class _LoginViewState extends State<LoginView> {
                   children: [
                     TextFormField(
                       controller: _emailController,
-                      decoration: const InputDecoration(
-                        labelText: 'E-mail',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'E-mail', border: OutlineInputBorder()),
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       validator: _validateEmail,
@@ -92,10 +89,7 @@ class _LoginViewState extends State<LoginView> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
-                      decoration: const InputDecoration(
-                        labelText: 'Senha',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()),
                       obscureText: true,
                       textInputAction: TextInputAction.done,
                       validator: _validatePassword,
@@ -108,9 +102,7 @@ class _LoginViewState extends State<LoginView> {
                     else ...[
                       ElevatedButton(
                         onPressed: _handleSignIn,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                         child: const Text('Entrar'),
                       ),
                       const SizedBox(height: 12),
@@ -127,10 +119,7 @@ class _LoginViewState extends State<LoginView> {
                         padding: const EdgeInsets.only(top: 16.0),
                         child: Text(
                           authViewModel.errorMessage,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                           textAlign: TextAlign.center,
                         ),
                       ),

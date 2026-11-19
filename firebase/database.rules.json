@@ -6,26 +6,7 @@
       ".read": "auth != null && auth.token.email_verified == true",
       ".indexOn": [
         "timestamp"
-      ],
-      "$messageId": {
-        ".write": "auth != null && auth.token.email_verified == true && !data.exists()",
-        ".validate": "newData.hasChildren(['senderId', 'senderName', 'text', 'timestamp'])",
-        "senderId": {
-          ".validate": "newData.val() == auth.uid"
-        },
-        "senderName": {
-          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30"
-        },
-        "text": {
-          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 4000"
-        },
-        "timestamp": {
-          ".validate": "newData.val() == now"
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
+      ]
     },
     "users": {
       "$uid": {
@@ -80,6 +61,129 @@
         },
         "$other": {
           ".validate": false
+        }
+      }
+    },
+    "identity": {
+      "$uid": {
+        ".read": "auth != null && auth.token.email_verified == true",
+        ".write": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['signatureKey', 'updatedAt'])",
+        "signatureKey": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+        },
+        "updatedAt": {
+          ".validate": "newData.val() == now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "keyPackages": {
+      "$uid": {
+        ".read": "auth != null && auth.token.email_verified == true",
+        "$kid": {
+          ".write": "auth != null && auth.token.email_verified == true && ((auth.uid == $uid) || (data.exists() && !newData.exists()))",
+          ".validate": "newData.isString() && newData.val().length <= 4000"
+        }
+      }
+    },
+    "conversations": {
+      "$cid": {
+        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        ".write": "auth != null && auth.token.email_verified == true && !data.exists() && newData.child('createdBy').val() == auth.uid && newData.child('members').child(auth.uid).val() == 'admin'",
+        ".validate": "newData.hasChildren(['type', 'createdBy', 'createdAt', 'epoch', 'members']) && $cid.matches(/^(d|g)_[A-Za-z0-9_-]{8,160}$/) && (newData.child('type').val() == 'direct') == $cid.beginsWith('d_') && (newData.child('type').val() != 'direct' || $cid.contains(auth.uid))",
+        "type": {
+          ".validate": "(newData.val() == 'direct' || newData.val() == 'group') && (!data.exists() || data.val() == newData.val())"
+        },
+        "createdBy": {
+          ".validate": "!data.exists() || data.val() == newData.val()"
+        },
+        "createdAt": {
+          ".validate": "(!data.exists() && newData.val() == now) || data.val() == newData.val()"
+        },
+        "epoch": {
+          ".write": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && ((!data.exists() && newData.val() == 1) || newData.val() == data.val() + 1)"
+        },
+        "members": {
+          "$m": {
+            ".write": "auth != null && ((data.parent().parent().child('members').child(auth.uid).val() == 'admin' && data.parent().parent().child('type').val() == 'group') || (auth.uid == $m && data.exists() && !newData.exists()))",
+            ".validate": "(newData.val() == 'admin' || newData.val() == 'member') && ($m == auth.uid || !root.child('blocks').child($m).child(auth.uid).exists())"
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "userConversations": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$cid": {
+          ".write": "auth != null && (auth.uid == $uid || (newData.exists() && newData.parent().parent().parent().child('conversations').child($cid).child('members').child(auth.uid).val() == 'admin') || (!newData.exists() && root.child('conversations').child($cid).child('members').child(auth.uid).val() == 'admin' && !newData.parent().parent().parent().child('conversations').child($cid).child('members').child($uid).exists()))",
+          ".validate": "newData.hasChildren(['since']) && newData.parent().parent().parent().child('conversations').child($cid).child('members').child($uid).exists()",
+          "since": {
+            ".validate": "newData.val() == now || newData.val() == data.val()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "mlsMessages": {
+      "$cid": {
+        ".read": "auth != null && root.child('conversations').child($cid).child('members').child(auth.uid).exists()",
+        "$mid": {
+          ".write": "auth != null && auth.token.email_verified == true && !data.exists() && newData.parent().parent().parent().child('conversations').child($cid).child('members').child(auth.uid).exists()",
+          ".validate": "newData.hasChildren(['sender', 'epoch', 'kind', 'payload', 'ts']) && ((newData.child('kind').val() == 'app' && newData.child('epoch').val() == root.child('conversations').child($cid).child('epoch').val() && newData.child('epoch').val() == newData.parent().parent().parent().child('conversations').child($cid).child('epoch').val()) || (newData.child('kind').val() == 'commit' && newData.child('epoch').val() == newData.parent().parent().parent().child('conversations').child($cid).child('epoch').val() && (root.child('conversations').child($cid).child('epoch').val() == newData.child('epoch').val() - 1 || (!root.child('conversations').child($cid).exists() && newData.child('epoch').val() == 1))))",
+          "sender": {
+            ".validate": "newData.val() == auth.uid"
+          },
+          "epoch": {
+            ".validate": "newData.isNumber()"
+          },
+          "kind": {
+            ".validate": "newData.val() == 'app' || newData.val() == 'commit'"
+          },
+          "payload": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 262144"
+          },
+          "ts": {
+            ".validate": "newData.val() == now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "welcomes": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$wid": {
+          ".write": "auth != null && ((auth.uid == $uid && !newData.exists()) || (auth != null && auth.token.email_verified == true && !data.exists() && newData.parent().parent().parent().child('conversations').child(newData.child('cid').val()).child('members').child(auth.uid).exists() && newData.parent().parent().parent().child('conversations').child(newData.child('cid').val()).child('members').child($uid).exists()))",
+          ".validate": "newData.hasChildren(['cid', 'from', 'epoch', 'payload', 'ts'])",
+          "cid": {
+            ".validate": "newData.isString()"
+          },
+          "from": {
+            ".validate": "newData.val() == auth.uid"
+          },
+          "epoch": {
+            ".validate": "newData.isNumber()"
+          },
+          "payload": {
+            ".validate": "newData.isString() && newData.val().length <= 1048576"
+          },
+          "ts": {
+            ".validate": "newData.val() == now"
+          },
+          "$other": {
+            ".validate": false
+          }
         }
       }
     }

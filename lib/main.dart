@@ -1,3 +1,4 @@
+import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -9,22 +10,22 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'data/firebase/firebase_auth_repository.dart';
-import 'data/firebase/firebase_global_chat_repository.dart';
+import 'data/firebase/firebase_conversation_backend.dart';
+import 'data/local/file_secure_store.dart';
 import 'data/firebase/firebase_profile_repository.dart';
 import 'domain/entities/app_user.dart';
 import 'domain/repositories/auth_repository.dart';
 import 'domain/entities/user_profile.dart';
-import 'domain/repositories/global_chat_repository.dart';
+import 'domain/repositories/conversation_backend.dart';
 import 'domain/repositories/profile_repository.dart';
 import 'firebase_options.dart';
 import 'presentation/auth/view_models/auth_view_model.dart';
 import 'presentation/auth/views/login_view.dart';
 import 'presentation/auth/views/register_view.dart';
 import 'presentation/auth/views/verify_email_view.dart';
-import 'presentation/chat/chat_room_view.dart';
-import 'presentation/chat/view_models/chat_view_model.dart';
 import 'presentation/profile/view_models/profile_view_model.dart';
 import 'presentation/profile/views/nickname_view.dart';
+import 'presentation/session/session_scope.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -48,10 +49,7 @@ class AuthGate extends StatelessWidget {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             if (profile.data == null) return NicknameView(initialName: user.displayName ?? '');
-            return ChangeNotifierProvider(
-              create: (context) => ChatViewModel(context.read<GlobalChatRepository>()),
-              child: const ChatRoomView(),
-            );
+            return SessionScope(key: ValueKey('session-${user.uid}'), uid: user.uid);
           },
         );
       },
@@ -73,13 +71,15 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await _activateAppCheck();
+  await RustLib.init();
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppTheme()),
         Provider<AuthRepository>(create: (_) => FirebaseAuthRepository(FirebaseAuth.instance)),
-        Provider<GlobalChatRepository>(create: (_) => FirebaseGlobalChatRepository(FirebaseDatabase.instance)),
+        Provider<ConversationBackend>(create: (_) => FirebaseConversationBackend(FirebaseDatabase.instance)),
+        Provider<SecureStoreFactory>.value(value: FileSecureStore.open),
         Provider<ProfileRepository>(create: (_) => FirebaseProfileRepository(FirebaseDatabase.instance)),
         ChangeNotifierProvider<AuthViewModel>(create: (context) => AuthViewModel(context.read<AuthRepository>())),
         ChangeNotifierProvider<ProfileViewModel>(

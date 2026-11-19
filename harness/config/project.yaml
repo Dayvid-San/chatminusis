@@ -16,6 +16,7 @@ commits:
 checks:                          # rodar antes de todo merge em develop
   - flutter pub get
   - flutter analyze --no-fatal-infos
+  - cargo build --manifest-path packages/chat_crypto_ffi/rust/Cargo.toml   # testes usam a lib Rust real via FFI
   - flutter test
   - (cd firebase && npm ci && npm test)   # regras do banco no emulador (Java 11+)
 
