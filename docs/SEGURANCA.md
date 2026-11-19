@@ -58,8 +58,8 @@ para o agente `security-reviewer` (`harness/agents/security-reviewer.md`) e deve
 | R5 | Média | Limite de buscas por nickname só no app. | **Corrigido**: busca feita pelo servidor, 30 por hora por usuário, leitura direta de `nicknames/` fechada. |
 | R6 | Baixa | A metade do backup no servidor não tem limite de tentativas próprio (depende da senha da conta e do App Check). | **Corrigido**: a metade do servidor só sai após login recente (5 min), com limite, registro e alerta por push ao dono; o aparelho guarda a própria cópia para os backups automáticos. Alerta por e-mail depende de provedor configurado. |
 | R7 | Baixa | Quem fica mais de 30 dias offline perde commits apagados pela retenção e o grupo trava. | **Corrigido**: lacuna de commits detectada e o aparelho pede reentrada sozinho; commits ficam 180 dias no servidor (mensagens, 30). |
-| R8 | Info | Mensagens antigas da sala global em texto puro (`/messages`) continuam no banco. | **Owner**: apagar o nó `/messages`. |
-| R9 | Info | Ciphersuite pós-quântica ainda é rascunho no OpenMLS. | Reavaliar antes do lançamento. |
+| R8 | Info | Mensagens antigas da sala global em texto puro (`/messages`) continuam no banco. | **Acesso fechado** (regra removida, nenhum cliente lê o nó). **Falta apagar os dados**, ação sua: `functions/scripts/delete-legacy-messages.js` (simula por padrão). |
+| R9 | Info | Ciphersuite pós-quântica ainda é rascunho no OpenMLS. | **Núcleo preparado** para várias suítes e testado com a suíte híbrida real; a migração aguarda o padrão sair de rascunho (critérios em `TAREFAS_RISCOS.md`). |
 
 > Plano de tratamento dos achados abertos, dividido em etapas: [`TAREFAS_RISCOS.md`](TAREFAS_RISCOS.md).
 
@@ -69,7 +69,7 @@ para o agente `security-reviewer` (`harness/agents/security-reviewer.md`) e deve
 - [ ] Firebase: publicar regras e funções (`firebase deploy --only database,functions`), plano Blaze, **ativar a aplicação do App Check**.
 - [ ] Firebase Auth: exigir verificação de e-mail e política de senha no console.
 - [ ] iOS: chave APNs no Firebase; capacidades Push Notifications e Background Modes no Xcode.
-- [ ] Apagar o nó legado `/messages` (R8).
+- [ ] Apagar os dados do nó legado `/messages` (R8): o acesso já está fechado; use `functions/scripts/delete-legacy-messages.js`.
 - [ ] Definir a licença do repositório (roadmap, seção 3.3) e adicionar `LICENSE`.
 - [ ] Corrigir R3 a R5 ou aceitar o risco formalmente.
 - [ ] Contratar auditoria/pentest externo antes de divulgar o app como seguro.

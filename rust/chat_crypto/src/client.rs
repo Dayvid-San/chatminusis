@@ -19,10 +19,35 @@ use tls_codec::{Deserialize as _, Serialize as _};
 
 use crate::{mls, vault, CryptoError, Result};
 
-/// X25519 key exchange, AES-128-GCM, SHA-256 and Ed25519: the MLS
-/// mandatory-to-implement suite. A hybrid post-quantum suite is planned once
-/// it is final in OpenMLS.
+/// The baseline suite: X25519 key exchange, AES-128-GCM, SHA-256 and Ed25519
+/// (the MLS mandatory-to-implement suite). What every group uses today.
 pub const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
+
+/// The draft hybrid post-quantum suite (ML-KEM-768 + X25519, Ed25519). Only
+/// available in builds with the `pq-draft` feature, which the app does not use.
+#[cfg(feature = "pq-draft")]
+pub const PQ_HYBRID_CIPHERSUITE: Ciphersuite =
+    Ciphersuite::MLS_128_MLKEM768X25519_AES128GCM_SHA256_Ed25519;
+
+/// All accepted suites must use one signature algorithm, because a device has a
+/// single identity key. Returns the accepted list and that algorithm.
+fn validate_suites(
+    accepted: &[Ciphersuite],
+    preferred: Ciphersuite,
+) -> Result<(Vec<Ciphersuite>, SignatureScheme)> {
+    if !accepted.contains(&preferred) {
+        return Err(CryptoError::InvalidInput(
+            "the preferred ciphersuite must be accepted".into(),
+        ));
+    }
+    let scheme = preferred.signature_algorithm();
+    if accepted.iter().any(|s| s.signature_algorithm() != scheme) {
+        return Err(CryptoError::InvalidInput(
+            "accepted ciphersuites must share one signature algorithm".into(),
+        ));
+    }
+    Ok((accepted.to_vec(), scheme))
+}
 
 /// Messages are padded to a multiple of this many bytes to hide their length.
 const PADDING_SIZE: usize = 64;
@@ -87,6 +112,9 @@ pub enum Incoming {
 }
 
 pub struct Client {
+    /// Suites this client accepts, and the one used for groups it creates.
+    accepted: Vec<Ciphersuite>,
+    preferred: Ciphersuite,
     identity: Vec<u8>,
     provider: OpenMlsRustCrypto,
     signer: SignatureKeyPair,
@@ -96,22 +124,45 @@ pub struct Client {
 
 impl Client {
     /// Creates a brand-new identity. `identity` is the stable user id (uid).
+    /// Groups use the baseline suite ([`CIPHERSUITE`]).
     pub fn new(identity: Vec<u8>) -> Result<Self> {
+        Self::with_ciphersuites(identity, &[CIPHERSUITE], CIPHERSUITE)
+    }
+
+    /// Like [`Client::new`], choosing which suites are accepted and which one
+    /// new groups use. `preferred` must be accepted and all accepted suites
+    /// must share one signature algorithm.
+    pub fn with_ciphersuites(
+        identity: Vec<u8>,
+        accepted: &[Ciphersuite],
+        preferred: Ciphersuite,
+    ) -> Result<Self> {
         if identity.is_empty() {
             return Err(CryptoError::InvalidInput("empty identity".into()));
         }
+        let (accepted, scheme) = validate_suites(accepted, preferred)?;
         let provider = OpenMlsRustCrypto::default();
-        let signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).map_err(mls)?;
+        let signer = SignatureKeyPair::new(scheme).map_err(mls)?;
         signer.store(provider.storage()).map_err(mls)?;
-        Ok(Self::assemble(identity, provider, signer))
+        Ok(Self::assemble(
+            identity, provider, signer, accepted, preferred,
+        ))
     }
 
-    fn assemble(identity: Vec<u8>, provider: OpenMlsRustCrypto, signer: SignatureKeyPair) -> Self {
+    fn assemble(
+        identity: Vec<u8>,
+        provider: OpenMlsRustCrypto,
+        signer: SignatureKeyPair,
+        accepted: Vec<Ciphersuite>,
+        preferred: Ciphersuite,
+    ) -> Self {
         let credential = CredentialWithKey {
             credential: BasicCredential::new(identity.clone()).into(),
             signature_key: signer.to_public_vec().into(),
         };
         Self {
+            accepted,
+            preferred,
             identity,
             provider,
             signer,
@@ -153,6 +204,17 @@ impl Client {
 
     /// Restores a client from [`Client::export_state`].
     pub fn restore(state: &[u8], key: &[u8]) -> Result<Self> {
+        Self::restore_with_ciphersuites(state, key, &[CIPHERSUITE], CIPHERSUITE)
+    }
+
+    /// [`Client::restore`] with an explicit suite configuration.
+    pub fn restore_with_ciphersuites(
+        state: &[u8],
+        key: &[u8],
+        accepted: &[Ciphersuite],
+        preferred: Ciphersuite,
+    ) -> Result<Self> {
+        let (accepted, scheme) = validate_suites(accepted, preferred)?;
         let plain = zeroize::Zeroizing::new(vault::open(key, STATE_CONTEXT, state)?);
         let mut r = Reader {
             buf: &plain,
@@ -179,13 +241,9 @@ impl Client {
                 values.insert(k, v);
             }
         }
-        let signer = SignatureKeyPair::read(
-            provider.storage(),
-            &public_key,
-            CIPHERSUITE.signature_algorithm(),
-        )
-        .ok_or_else(|| CryptoError::InvalidInput("signature key missing from state".into()))?;
-        let mut client = Self::assemble(identity, provider, signer);
+        let signer = SignatureKeyPair::read(provider.storage(), &public_key, scheme)
+            .ok_or_else(|| CryptoError::InvalidInput("signature key missing from state".into()))?;
+        let mut client = Self::assemble(identity, provider, signer, accepted, preferred);
         for id in group_ids {
             let group = MlsGroup::load(client.provider.storage(), &GroupId::from_slice(&id))
                 .map_err(mls)?
@@ -209,19 +267,44 @@ impl Client {
     /// Creates single-use KeyPackages to publish so others can add this client
     /// to groups while it is offline.
     pub fn generate_key_packages(&self, count: u32) -> Result<Vec<Vec<u8>>> {
+        self.generate_key_packages_for(self.preferred, count)
+    }
+
+    /// KeyPackages for one specific accepted suite. A KeyPackage only works in
+    /// groups of its own suite, so a client that accepts several suites
+    /// publishes a pool for each.
+    pub fn generate_key_packages_for(
+        &self,
+        suite: Ciphersuite,
+        count: u32,
+    ) -> Result<Vec<Vec<u8>>> {
+        self.require_accepted(suite)?;
         (0..count)
             .map(|_| {
                 let bundle = KeyPackage::builder()
-                    .build(
-                        CIPHERSUITE,
-                        &self.provider,
-                        &self.signer,
-                        self.credential.clone(),
-                    )
+                    .build(suite, &self.provider, &self.signer, self.credential.clone())
                     .map_err(mls)?;
                 bundle.key_package().tls_serialize_detached().map_err(mls)
             })
             .collect()
+    }
+
+    fn require_accepted(&self, suite: Ciphersuite) -> Result<()> {
+        if self.accepted.contains(&suite) {
+            Ok(())
+        } else {
+            Err(CryptoError::InvalidInput("ciphersuite not accepted".into()))
+        }
+    }
+
+    /// Suites this client accepts, most preferred first.
+    pub fn accepted_ciphersuites(&self) -> Vec<u16> {
+        self.accepted.iter().map(|s| *s as u16).collect()
+    }
+
+    /// The suite a group uses (as its IANA code point).
+    pub fn group_ciphersuite(&self, group_id: &[u8]) -> Result<u16> {
+        Ok(self.group(group_id)?.ciphersuite() as u16)
     }
 
     pub fn generate_key_package(&self) -> Result<Vec<u8>> {
@@ -240,7 +323,7 @@ impl Client {
             .mark_as_last_resort()
             .leaf_node_capabilities(capabilities)
             .build(
-                CIPHERSUITE,
+                self.preferred,
                 &self.provider,
                 &self.signer,
                 self.credential.clone(),
@@ -251,9 +334,9 @@ impl Client {
 
     // --------------------------------------------------------------- groups
 
-    fn create_config() -> MlsGroupCreateConfig {
+    fn create_config(&self) -> MlsGroupCreateConfig {
         MlsGroupCreateConfig::builder()
-            .ciphersuite(CIPHERSUITE)
+            .ciphersuite(self.preferred)
             .padding_size(PADDING_SIZE)
             .max_past_epochs(MAX_PAST_EPOCHS)
             .sender_ratchet_configuration(SenderRatchetConfiguration::new(OUT_OF_ORDER, 1000))
@@ -292,7 +375,7 @@ impl Client {
         let group = MlsGroup::new_with_group_id(
             &self.provider,
             &self.signer,
-            &Self::create_config(),
+            &self.create_config(),
             GroupId::from_slice(&group_id),
             self.credential.clone(),
         )
@@ -310,23 +393,30 @@ impl Client {
         group.delete(self.provider.storage()).map_err(mls)
     }
 
-    fn validate_key_packages(&self, key_packages: Vec<Vec<u8>>) -> Result<Vec<KeyPackage>> {
+    /// KeyPackages must be of the group's suite (and therefore of an accepted one).
+    fn validate_key_packages(
+        &self,
+        key_packages: Vec<Vec<u8>>,
+        group_suite: Ciphersuite,
+    ) -> Result<Vec<KeyPackage>> {
         let mut validated = Vec::with_capacity(key_packages.len());
         for bytes in key_packages {
             // Reject other ciphersuites before touching their crypto code
             // (see the RUSTSEC-2026-0387 note in deny.toml).
-            if declared_ciphersuite(&bytes) != Some(CIPHERSUITE as u16) {
+            if declared_ciphersuite(&bytes) != Some(group_suite as u16)
+                || !self.accepted.contains(&group_suite)
+            {
                 return Err(CryptoError::InvalidInput(
-                    "unsupported key package ciphersuite".into(),
+                    "key package ciphersuite does not match the group".into(),
                 ));
             }
             let kp = KeyPackageIn::tls_deserialize_exact(bytes.as_slice()).map_err(mls)?;
             let kp = kp
                 .validate(self.provider.crypto(), ProtocolVersion::Mls10)
                 .map_err(mls)?;
-            if kp.ciphersuite() != CIPHERSUITE {
+            if kp.ciphersuite() != group_suite {
                 return Err(CryptoError::InvalidInput(
-                    "unsupported key package ciphersuite".into(),
+                    "key package ciphersuite does not match the group".into(),
                 ));
             }
             validated.push(kp);
@@ -340,7 +430,8 @@ impl Client {
         group_id: &[u8],
         key_packages: Vec<Vec<u8>>,
     ) -> Result<CommitOutput> {
-        let validated = self.validate_key_packages(key_packages)?;
+        let group_suite = self.group(group_id)?.ciphersuite();
+        let validated = self.validate_key_packages(key_packages, group_suite)?;
         let (provider, signer) = (&self.provider, &self.signer);
         let group = self
             .groups
@@ -437,12 +528,15 @@ impl Client {
             MlsMessageBodyIn::Welcome(w) => w,
             _ => return Err(CryptoError::InvalidInput("not a welcome message".into())),
         };
+        // Refuse a Welcome of an unaccepted suite before running its cryptography.
+        self.require_accepted(welcome.ciphersuite())
+            .map_err(|_| CryptoError::InvalidInput("unsupported group ciphersuite".into()))?;
         let group =
             StagedWelcome::new_from_welcome(&self.provider, &Self::join_config(), welcome, None)
                 .map_err(mls)?
                 .into_group(&self.provider)
                 .map_err(mls)?;
-        if group.ciphersuite() != CIPHERSUITE {
+        if !self.accepted.contains(&group.ciphersuite()) {
             return Err(CryptoError::InvalidInput(
                 "unsupported group ciphersuite".into(),
             ));
