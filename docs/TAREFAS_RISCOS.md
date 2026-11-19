@@ -12,7 +12,7 @@
 | 2 | R4: esgotamento de KeyPackages ✅ | Média | Pequeno | `security/r4-keypackages` |
 | 3 | R5: limite de busca só no app ✅ | Média | Pequeno | `security/r5-limite-busca` |
 | 4 | R6: acesso ao backup ✅ (e-mail depende de provedor) | Baixa | Pequeno | `security/r6-acesso-backup` |
-| 5 | R3: membro comum remove outros no MLS | Média | Grande | `security/r3-validacao-commits` |
+| 5 | R3: membro comum remove outros no MLS | Média | Grande (desenho alterado) | `security/r3-validacao-commits` |
 | 6 | R8: mensagens antigas em texto puro | Info | Mínimo | (ação do Owner) |
 | 7 | R9: criptografia pós-quântica | Info | Médio | `feat/r9-pos-quantico` (futuro) |
 
@@ -132,33 +132,40 @@
 - Na restauração, se o login for antigo o app pede a senha na própria tela e tenta de novo.
 - O registro de downloads aparece na tela do backup ("Downloads recentes da chave do servidor").
 
-## R3. Membro comum consegue remover outros no grupo MLS `[ ]`
+## R3. Membro comum consegue remover outros no grupo MLS `[~]`
 
-**Problema:** o servidor não lê o commit cifrado; um membro sem permissão pode publicar um commit que remove outros. Rejeitar só no celular trava o grupo.
+**Problema:** o servidor não lê o commit cifrado; um membro sem permissão pode publicar um commit que remove outros. Rejeitar só no celular trava o grupo (o servidor já avançou a época).
 
-### Etapa 1. Commits em formato aberto
-- [ ] Configurar o OpenMLS para enviar commits como `PublicMessage` (assinados, não cifrados) e manter as mensagens cifradas.
-- [ ] Confirmar que nenhum dado novo vaza (o servidor já conhece a lista de membros).
-- [ ] Testes no Rust: commits legíveis pelo validador, mensagens continuam cifradas.
+> **Mudança de desenho (decidida ao detalhar a implementação).** O plano original (commits em `PublicMessage` + validador em Rust no servidor) exige um serviço **com estado** que guarde a árvore pública de cada grupo para identificar quem enviou e o que o commit altera. Isso é um componente novo de infraestrutura que não dá para construir nem testar sem um ambiente real. O desenho abaixo fecha o mesmo furo usando só o que o servidor já sabe (quem é admin), sem serviço novo.
+> - **Só admins publicam commits** (regra do servidor, nos dois backends).
+> - Membros comuns renovam as chaves por **proposta de atualização** (`Update`), que um admin efetiva num commit.
+> - O app **exige que o conteúdo MLS combine com o tipo do envelope** e ignora propostas que não sejam `Update`.
+>
+> Custos: a renovação de chaves de membros comuns depende de um admin online; e admins continuam sendo confiáveis (podem remover pessoas, é o papel deles).
 
-### Etapa 2. Validador no servidor
-- [ ] Criar o validador em Rust reaproveitando o `chat_crypto` (WASM para Edge Function/Cloud Function, ou serviço em Cloud Run).
-- [ ] Regras: só admin adiciona/remove; conversa 1:1 não ganha membros; o commit precisa bater com a mudança de membros declarada; assinatura do autor válida.
+### Etapa 1. Núcleo Rust: propostas e tipo esperado
+- [ ] `propose_self_update` (membro comum) e `commit_pending_proposals` (admin).
+- [ ] `process` recebe o tipo esperado (mensagem, ou commit/proposta) e **recusa sem aplicar** qualquer conteúdo de outro tipo.
+- [ ] Propostas que não sejam `Update` (Add, Remove, ReInit…) nunca são guardadas.
+- [ ] Testes: commit escondido em envelope de mensagem, proposta de remoção, commit de proposta válida.
 
-### Etapa 3. Escrita de commits só pelo validador
-- [ ] Firebase: regras negam escrever commits direto; a função valida e faz o compare-and-set da época.
-- [ ] Supabase: `publish_commit` chama o validador antes de aceitar.
-- [ ] Atualizar `FirebaseConversationBackend` e `SupabaseConversationBackend`.
+### Etapa 2. Servidor: só admins publicam commits
+- [ ] Firebase: regras exigem papel de admin para envelope `commit` e para avançar a época; envelope `proposal` aceito de qualquer membro na época atual.
+- [ ] Supabase: `publish_commit` sempre exige admin; nova `publish_proposal`; constraint de `kind` aceita `proposal`.
+- [ ] Testes de regras (emulador) e de RLS (PostgreSQL).
+
+### Etapa 3. App: propostas e commits automáticos
+- [ ] Contrato dos backends e implementações Firebase/Supabase para o envelope `proposal`.
+- [ ] Membro comum: renovação periódica por proposta; admin e conversa 1:1: commit direto.
+- [ ] Admin: efetiva automaticamente as propostas válidas pendentes.
+- [ ] Restauração de backup por membro comum: refaz a entrada no grupo (reentrada) em vez de renovar sozinho.
 
 ### Etapa 4. Defesa no celular
-- [ ] Antes de aplicar um commit, o app confere as mesmas regras.
-- [ ] Se um commit inválido passar, um admin recria o grupo (novo grupo MLS, todos reconvidados), aproveitando o mecanismo de reentrada.
+- [ ] Cada envelope é processado com o tipo esperado; divergência é registrada como aviso, sem travar a conversa.
+- [ ] Testes com membro malicioso: commit disfarçado, proposta de remoção, commit direto negado pelo servidor.
 
-### Etapa 5. Testes e documentação
-- [ ] Testes com commits maliciosos: remoção por não admin, adição em 1:1, mudança declarada diferente da real.
-- [ ] Atualizar `SEGURANCA.md` (R3 → corrigido).
-
----
+### Etapa 5. Documentação
+- [ ] Atualizar `SEGURANCA.md` (R3 → corrigido, com os custos e riscos residuais acima).
 
 ## R8. Mensagens antigas em texto puro no banco `[ ]`
 
