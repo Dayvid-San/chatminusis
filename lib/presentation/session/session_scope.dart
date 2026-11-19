@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/security/app_lock.dart';
 import '../../domain/repositories/conversation_backend.dart';
 import '../../domain/repositories/profile_repository.dart';
 import '../../domain/repositories/secure_store.dart';
@@ -14,10 +15,12 @@ typedef SecureStoreFactory = Future<SecureStore> Function(String uid);
 /// Lives while a user is signed in: opens their encrypted store, starts the
 /// MLS messaging service and exposes it to the screens below.
 class SessionScope extends StatefulWidget {
-  const SessionScope({super.key, required this.uid, this.extraActions = const []});
+  const SessionScope({super.key, required this.uid, this.securityExtrasBuilder});
 
   final String uid;
-  final List<Widget> extraActions;
+
+  /// Builds extra entries for the security screen once messaging is running.
+  final List<Widget> Function(BuildContext context, MessagingService messaging)? securityExtrasBuilder;
 
   @override
   State<SessionScope> createState() => _SessionScopeState();
@@ -27,6 +30,7 @@ class _SessionScopeState extends State<SessionScope> {
   MessagingService? _messaging;
   ConversationsViewModel? _vm;
   Object? _error;
+  bool _compromised = false;
 
   @override
   void initState() {
@@ -40,6 +44,7 @@ class _SessionScopeState extends State<SessionScope> {
       if (!mounted) return;
       final messaging = MessagingService(backend: context.read<ConversationBackend>(), store: store, uid: widget.uid);
       await messaging.start();
+      _compromised = await deviceLooksCompromised();
       if (!mounted) {
         await messaging.dispose();
         return;
@@ -111,7 +116,13 @@ class _SessionScopeState extends State<SessionScope> {
         Provider<MessagingService>.value(value: messaging),
         ChangeNotifierProvider<ConversationsViewModel>.value(value: vm),
       ],
-      child: HomeView(onSignOut: _signOut, extraActions: widget.extraActions),
+      child: Builder(
+        builder: (context) => HomeView(
+          onSignOut: _signOut,
+          deviceCompromised: _compromised,
+          securityExtras: widget.securityExtrasBuilder?.call(context, messaging) ?? const [],
+        ),
+      ),
     );
   }
 }

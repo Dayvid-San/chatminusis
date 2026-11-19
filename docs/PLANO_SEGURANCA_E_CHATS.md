@@ -177,12 +177,15 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - [x] Marcar/desmarcar como verificado.
 - Leitura do QR pela câmera não foi incluída (comparar o número visualmente ou em voz alta tem a mesma segurança).
 
-### Etapa 8. Proteção no aparelho `[ ]`
-- [ ] Banco local cifrado (SQLCipher) para histórico e estado MLS.
-- [ ] Bloqueio por biometria/PIN; `FLAG_SECURE` (Android) e ocultação no multitarefa (iOS).
-- [ ] Mensagens temporárias.
-- [ ] Logout apaga chaves e dados locais.
-- [ ] Attestation do app (Play Integrity / App Attest) e aviso em aparelhos com root/jailbreak.
+### Etapa 8. Proteção no aparelho `[x]`
+- [x] Histórico e estado MLS cifrados em disco (AES-256-GCM via Rust, chave no Keystore/Keychain "somente este aparelho"). Usado no lugar do SQLCipher.
+- [x] Dados do app fora dos backups do Android (`allowBackup=false` + regras de extração).
+- [x] Bloqueio por biometria/PIN do aparelho ao abrir e após 30 s em segundo plano.
+- [x] `FLAG_SECURE` no Android (bloqueia print, gravação e prévia); desfoque no multitarefa do iOS.
+- [x] Mensagens temporárias (5 min a 7 dias), apagadas nos dois lados.
+- [x] Sair apaga chaves e histórico do aparelho (com aviso).
+- [x] Aviso em aparelhos com root/jailbreak (o controle real no servidor é o App Check).
+- O iOS não permite bloquear prints; o app apenas oculta o conteúdo no multitarefa.
 
 ### Etapa 9. Notificações sem vazamento `[ ]`
 - [ ] Push sem conteúdo; o app busca e decifra localmente.
