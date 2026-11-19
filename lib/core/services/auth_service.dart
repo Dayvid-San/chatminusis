@@ -20,15 +20,31 @@ class AuthService {
     }
   }
 
-  Future<UserCredential> signUp(String email, String password) async {
+  Future<UserCredential> signUp(
+    String email,
+    String password, {
+    String? displayName,
+  }) async {
     try {
-      return await _firebaseAuth.createUserWithEmailAndPassword(
+      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+      if (displayName != null && displayName.trim().isNotEmpty) {
+        await credential.user?.updateDisplayName(displayName.trim());
+        await credential.user?.reload();
+      }
+      return credential;
     } on FirebaseAuthException {
       rethrow;
     }
+  }
+
+  Future<void> updateDisplayName(String name) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) return;
+    await user.updateDisplayName(name.trim());
+    await user.reload();
   }
 
   Future<void> signOut() async {

@@ -12,11 +12,13 @@ class RegisterView extends StatefulWidget {
 
 class _RegisterViewState extends State<RegisterView> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -28,10 +30,11 @@ class _RegisterViewState extends State<RegisterView> {
     }
 
     final authViewModel = context.read<AuthViewModel>();
+    final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    final created = await authViewModel.register(email, password);
+    final created = await authViewModel.register(email, password, displayName: name);
 
     if (!mounted) {
       return;
@@ -40,6 +43,20 @@ class _RegisterViewState extends State<RegisterView> {
     if (created) {
       context.go('/');
     }
+  }
+
+  String? _validateName(String? value) {
+    final name = value?.trim() ?? '';
+
+    if (name.isEmpty) {
+      return 'Escolha um nome.';
+    }
+
+    if (name.length > 30) {
+      return 'O nome deve ter no maximo 30 caracteres.';
+    }
+
+    return null;
   }
 
   String? _validateEmail(String? value) {
@@ -96,6 +113,17 @@ class _RegisterViewState extends State<RegisterView> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome',
+                        border: OutlineInputBorder(),
+                      ),
+                      textInputAction: TextInputAction.next,
+                      validator: _validateName,
+                      onChanged: (_) => authViewModel.clearError(),
+                    ),
+                    const SizedBox(height: 14),
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
