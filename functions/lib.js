@@ -5,8 +5,14 @@
 export const GENERIC_TITLE = 'Chatminusis';
 export const GENERIC_BODY = 'Nova mensagem';
 
-/** Server-side retention of opaque envelopes and welcomes. */
+/** Server-side retention of opaque messages and welcomes. */
 export const RETENTION_DAYS = 30;
+
+/**
+ * Commits are tiny and let long-offline members catch up, so they are kept
+ * much longer than messages (a member offline for more than this must rejoin).
+ */
+export const COMMIT_RETENTION_DAYS = 180;
 
 /** Members to notify about a new envelope: everyone except the sender. */
 export function recipientsFor(conversation, senderUid) {
@@ -43,4 +49,11 @@ export function isDeadToken(errorCode) {
 /** Timestamp (ms) before which envelopes are deleted. */
 export function retentionCutoff(nowMs, days = RETENTION_DAYS) {
   return nowMs - days * 24 * 60 * 60 * 1000;
+}
+
+/** Whether an MLS envelope is past its retention period. */
+export function shouldPrune(envelope, nowMs) {
+  if (!envelope || typeof envelope.ts !== 'number') return false;
+  const days = envelope.kind === 'commit' ? COMMIT_RETENTION_DAYS : RETENTION_DAYS;
+  return envelope.ts < retentionCutoff(nowMs, days);
 }

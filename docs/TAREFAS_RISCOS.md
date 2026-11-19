@@ -8,7 +8,7 @@
 
 | Ordem | Risco | Severidade | Esforço | Branch |
 |---|---|---|---|---|
-| 1 | R7: grupo trava após 30 dias offline | Baixa | Pequeno | `fix/r7-lacuna-de-commits` |
+| 1 | R7: grupo trava após 30 dias offline ✅ | Baixa | Pequeno | `fix/r7-lacuna-de-commits` |
 | 2 | R4: esgotamento de KeyPackages | Média | Pequeno | `security/r4-keypackages` |
 | 3 | R5: limite de busca só no app | Média | Pequeno | `security/r5-limite-busca` |
 | 4 | R6: acesso ao backup | Baixa | Pequeno | `security/r6-acesso-backup` |
@@ -18,26 +18,31 @@
 
 ---
 
-## R7. Grupo trava para quem fica mais de 30 dias offline `[ ]`
+## R7. Grupo trava para quem fica mais de 30 dias offline `[x]`
 
 **Problema:** a retenção apaga commits antigos; quem volta depois disso não consegue avançar de época.
 
 ### Etapa 1. Detectar a lacuna no app
-- [ ] No `MessagingService._drain`, identificar quando existe um commit com época maior que `local + 1` e o commit intermediário não existe mais no servidor.
-- [ ] Esperar um tempo curto (para não confundir com um commit apenas atrasado) antes de concluir que há lacuna.
+- [x] No `MessagingService._drain`, identificar quando existe um commit com época maior que `local + 1` e o commit intermediário não existe mais no servidor.
+- [x] Esperar um tempo curto (para não confundir com um commit apenas atrasado) antes de concluir que há lacuna.
 
 ### Etapa 2. Recuperar automaticamente
-- [ ] Ao confirmar a lacuna: apagar o grupo MLS local, manter o histórico e publicar um pedido de reentrada (mecanismo do R1).
-- [ ] Mostrar uma mensagem de sistema: "Você ficou muito tempo offline; reconectando à conversa".
+- [x] Ao confirmar a lacuna: apagar o grupo MLS local, manter o histórico e publicar um pedido de reentrada (mecanismo do R1).
+- [x] Mostrar uma mensagem de sistema: "Você ficou muito tempo offline; reconectando à conversa".
 
 ### Etapa 3. Reter commits por mais tempo
-- [ ] Firebase (`functions/index.js`): apagar mensagens após 30 dias, mas commits só após 180 dias.
-- [ ] Supabase (`pg_cron`): mesma separação por `kind`.
-- [ ] Atualizar testes da função de retenção.
+- [x] Firebase (`functions/index.js`): apagar mensagens após 30 dias, mas commits só após 180 dias.
+- [x] Supabase (`pg_cron`): mesma separação por `kind`.
+- [x] Atualizar testes da função de retenção.
 
 ### Etapa 4. Testes e documentação
-- [ ] Teste de ponta a ponta: membro offline, commits apagados no servidor, membro volta e é reconectado.
-- [ ] Atualizar `SEGURANCA.md` (R7 → corrigido).
+- [x] Teste de ponta a ponta: membro offline, commits apagados no servidor, membro volta e é reconectado.
+- [x] Atualizar `SEGURANCA.md` (R7 → corrigido).
+
+**Notas da implementação:**
+- A lacuna é detectada comparando a época local com a do servidor (`gapDelay`, 20 s); assim também funciona quando só commits foram apagados e não sobrou nenhuma mensagem nova.
+- Descoberta durante os testes: o atalho "se a chave bate, alguém já reparou" (criado no R1) ignoraria esse caso, porque o aparelho continua com a mesma chave. Foi trocado por **eleição do reparador** (menor uid entre os admins; os demais só entram depois de uma espera por posição) e por conferir que o pedido ainda está aberto antes de agir.
+- Cada aparelho faz **um pedido por perda** e apaga o próprio pedido ao entrar de novo; pedidos velhos poderiam fazer o admin remover um membro saudável.
 
 ---
 

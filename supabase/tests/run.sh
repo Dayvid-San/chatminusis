@@ -7,5 +7,5 @@ DB=chatminusis_rls_test
 psql -q -d postgres -c "drop database if exists $DB" -c "drop role if exists anon" -c "drop role if exists authenticated" >/dev/null
 psql -q -d postgres -c "create database $DB" >/dev/null
 psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/supabase_shim.sql >/dev/null
-psql -q -v ON_ERROR_STOP=1 -d $DB -f migrations/20261119000000_init.sql >/dev/null
+for f in migrations/*.sql; do psql -q -v ON_ERROR_STOP=1 -d $DB -f "$f" >/dev/null; done
 psql -q -v ON_ERROR_STOP=1 -d $DB -f tests/rls_test.sql

@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myapp/domain/entities/conversation.dart';
 import 'package:myapp/domain/services/messaging_service.dart';
 
 import '../fakes/memory_conversation_backend.dart';
@@ -41,6 +42,8 @@ void main() {
       uid: uid,
       clock: () => now,
       rejoinDelay: const Duration(milliseconds: 300),
+      gapDelay: const Duration(milliseconds: 400),
+      repairTakeoverDelay: const Duration(milliseconds: 300),
     );
     await s.start();
     services.add(s);
@@ -305,6 +308,92 @@ void main() {
       );
       await bob.send(id, 'oi carol');
       await eventually(() => texts(carol, id).contains('oi carol'));
+      expect(alice.conversation(id)!.memberUids.where((m) => m == 'carol'), hasLength(1));
+    });
+  });
+
+  group('lost commits after a long absence (R7)', () {
+    test('a member who missed pruned commits is reconnected automatically', () async {
+      final alice = await user('alice');
+      final bobStore = MemorySecureStore();
+      var bob = await user('bob', store: bobStore);
+      final id = await alice.createGroup('Turma', ['bob']);
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false && bob.conversation(id)?.title == 'Turma');
+      await alice.send(id, 'antes de sair');
+      await eventually(() => texts(bob, id).contains('antes de sair'));
+      final before = texts(bob, id).length;
+
+      // Bob goes offline; the group moves on by two epochs.
+      await bob.dispose();
+      services.remove(bob);
+      await alice.rotateKeys(id);
+      await alice.rotateKeys(id);
+      await alice.send(id, 'enquanto bob estava fora');
+      final serverEpoch = server.conversations[id]!.epoch;
+      expect(serverEpoch, greaterThan(2));
+
+      // Retention deletes the intermediate commits (epochs 2..n).
+      server.pruneEnvelopes(id, (e) => e.kind == EnvelopeKind.commit && e.epoch > 1);
+
+      bob = await user('bob', store: bobStore);
+      await eventually(() => texts(bob, id).any((t) => t.contains('muito tempo offline')), reason: 'gap detected');
+      await eventually(
+        () =>
+            bob.conversation(id)?.pendingWelcome == false &&
+            bob.engine.epoch(groupId: utf8.encode(id)).toInt() >= serverEpoch,
+        reason: 'alice re-invites bob',
+      );
+      await eventually(() => (server.rejoin[id] ?? <String>{}).isEmpty, reason: 'request cleared after rejoin');
+      expect(texts(bob, id).length, greaterThan(before), reason: 'history kept, plus the system notice');
+      expect(texts(bob, id), contains('antes de sair'));
+
+      await bob.send(id, 'voltei');
+      await eventually(() => texts(alice, id).contains('voltei'));
+      await alice.send(id, 'bem-vindo de volta');
+      await eventually(() => texts(bob, id).contains('bem-vindo de volta'));
+      expect(alice.conversation(id)!.memberUids.where((m) => m == 'bob'), hasLength(1), reason: 'no duplicate leaf');
+    });
+
+    test('a member that is only slightly behind is NOT reset', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final id = await alice.createGroup('G', ['bob']);
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+      await alice.rotateKeys(id);
+      await alice.send(id, 'normal');
+      await eventually(() => texts(bob, id).contains('normal'));
+      await Future<void>.delayed(const Duration(milliseconds: 900)); // longer than gapDelay
+      expect(texts(bob, id).any((t) => t.contains('muito tempo offline')), isFalse);
+      expect(bob.conversation(id)!.pendingWelcome, isFalse);
+    });
+
+    test('with several admins only the elected one repairs', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final carol = await user('carol');
+      final id = await alice.createGroup('G', ['bob', 'carol']);
+      await eventually(
+        () => bob.conversation(id)?.pendingWelcome == false && carol.conversation(id)?.pendingWelcome == false,
+      );
+      // Promote bob to admin on the server record (as the group's admins would).
+      final r = server.conversations[id]!;
+      server.conversations[id] = ConversationRecord(
+        id: r.id,
+        type: r.type,
+        createdBy: r.createdBy,
+        epoch: r.epoch,
+        members: {...r.members, 'bob': MemberRole.admin},
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      var carolReset = carol;
+      await carol.dispose();
+      services.remove(carol);
+      server.keyPackages.remove('carol');
+      carolReset = await user('carol');
+      await eventually(() => carolReset.conversation(id)?.pendingWelcome == false, reason: 'repaired');
+      final epochs = server.envelopes[id]!.where((e) => e.kind == EnvelopeKind.commit).map((e) => e.epoch).toList();
+      expect(epochs.toSet().length, epochs.length, reason: 'each epoch committed exactly once');
       expect(alice.conversation(id)!.memberUids.where((m) => m == 'carol'), hasLength(1));
     });
   });

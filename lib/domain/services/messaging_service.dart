@@ -62,6 +62,8 @@ class MessagingService {
     required this.uid,
     DateTime Function()? clock,
     this.rejoinDelay = const Duration(seconds: 10),
+    this.gapDelay = const Duration(seconds: 20),
+    this.repairTakeoverDelay = const Duration(seconds: 30),
   }) : _backend = backend,
        _store = store,
        _now = clock ?? DateTime.now;
@@ -74,6 +76,13 @@ class MessagingService {
   /// How long to wait for a Welcome before asking to be re-invited.
   final Duration rejoinDelay;
 
+  /// How long the group may stay behind the server epoch before we conclude
+  /// that commits were lost (e.g. pruned after a long absence).
+  final Duration gapDelay;
+
+  /// Extra wait per rank for admins that are not the elected repairer.
+  final Duration repairTakeoverDelay;
+
   late ChatCryptoClient _engine;
   late Uint8List _stateKey;
   final Map<String, _Conv> _convs = {};
@@ -83,6 +92,11 @@ class MessagingService {
   final Map<String, StreamSubscription<ConversationRecord?>> _recordSubs = {};
   final Map<String, StreamSubscription<Set<String>>> _rejoinSubs = {};
   final Map<String, Timer> _rejoinTimers = {};
+  final Map<String, Timer> _gapTimers = {};
+
+  /// Conversations for which this device already asked to be re-invited since
+  /// it last lost its keys (one request per loss).
+  final Set<String> _rejoinAsked = {};
   final List<StreamSubscription<Object?>> _subs = [];
   final _changes = StreamController<void>.broadcast();
   final _lock = _Mutex();
@@ -163,7 +177,7 @@ class MessagingService {
 
   Future<void> dispose() async {
     _purgeTimer?.cancel();
-    for (final t in _rejoinTimers.values) {
+    for (final t in [..._rejoinTimers.values, ..._gapTimers.values]) {
       t.cancel();
     }
     for (final s in [..._subs, ..._envelopeSubs.values, ..._recordSubs.values, ..._rejoinSubs.values]) {
@@ -375,14 +389,67 @@ class MessagingService {
     } else {
       // Member on the server but without keys (e.g. new phone without backup):
       // if no Welcome shows up, ask the others to re-invite this device.
-      _rejoinTimers[id] ??= Timer(rejoinDelay, () {
-        _rejoinTimers.remove(id);
-        final c = _convs[id];
-        if (c != null && !c.removed && !_engine.hasGroup(groupId: _gid(id))) {
-          unawaited(_backend.requestRejoin(id, uid).catchError((Object _) {}));
-        }
-      });
+      _scheduleRejoin(id);
     }
+  }
+
+  void _scheduleRejoin(String id) {
+    if (_rejoinAsked.contains(id)) return;
+    _rejoinTimers[id] ??= Timer(rejoinDelay, () {
+      _rejoinTimers.remove(id);
+      final c = _convs[id];
+      if (c != null && !c.removed && !_engine.hasGroup(groupId: _gid(id)) && _rejoinAsked.add(id)) {
+        unawaited(_backend.requestRejoin(id, uid).catchError((Object _) {}));
+      }
+    });
+  }
+
+  // ------------------------------------------------- lost-commit recovery
+
+  bool _isBehind(_Conv c) {
+    final gid = _gid(c.id);
+    final record = c.record;
+    return record != null &&
+        !c.removed &&
+        _engine.hasGroup(groupId: gid) &&
+        record.epoch > _engine.epoch(groupId: gid).toInt();
+  }
+
+  /// Called after every drain and server update: when the group stays behind
+  /// the server epoch, the commits in between are gone (retention) and this
+  /// device can never catch up by itself.
+  void _watchGap(_Conv c) {
+    if (!_isBehind(c)) {
+      _gapTimers.remove(c.id)?.cancel();
+      return;
+    }
+    _gapTimers[c.id] ??= Timer(gapDelay, () {
+      _gapTimers.remove(c.id);
+      unawaited(_lock.run(() => _recoverFromGap(c.id)));
+    });
+  }
+
+  Future<void> _recoverFromGap(String id) async {
+    final c = _convs[id];
+    if (c == null || !_isBehind(c)) return; // caught up in the meantime
+    await _engine.deleteGroup(groupId: _gid(id));
+    await _persistEngine();
+    await _envelopeSubs.remove(id)?.cancel(); // re-subscribed (with replay) after the new Welcome
+    _buffer.remove(id);
+    c.messages.add(
+      DecryptedMessage(
+        id: 'gap-${_now().millisecondsSinceEpoch}',
+        conversationId: id,
+        senderUid: '',
+        text: 'Você ficou muito tempo offline. Reconectando à conversa…',
+        timestamp: _now().millisecondsSinceEpoch,
+        outgoing: false,
+      ),
+    );
+    await _saveConv(c);
+    _rejoinAsked.remove(id);
+    _scheduleRejoin(id);
+    _emit();
   }
 
   void _watchEnvelopes(String id) {
@@ -410,14 +477,19 @@ class MessagingService {
       final c = _convs[id];
       final record = c?.record ?? await _backend.getConversation(id);
       if (c == null || record == null || !record.members.containsKey(other)) return;
-      if (c.type == ConversationType.group && !record.isAdmin(uid)) return;
+      // Elected repairer: the lowest uid among the admins other than the
+      // requester. Others only step in, in rank order, if the request is
+      // still open after their extra wait (prevents double repairs).
+      final admins =
+          record.members.entries.where((e) => e.value == MemberRole.admin && e.key != other).map((e) => e.key).toList()
+            ..sort();
+      final rank = admins.indexOf(uid);
+      if (rank < 0) return;
+      if (rank > 0) await Future<void>.delayed(repairTakeoverDelay * rank);
+      // Never act on a stale request: it must still be open right now.
+      if (!(await _backend.watchRejoinRequests(id).first).contains(other)) return;
       final gid = _gid(id);
-      final published = await _backend.fetchIdentity(other);
       final current = _engine.memberKeys(groupId: gid).where((m) => utf8.decode(m.identity) == other).toList();
-      if (published != null && current.any((m) => _bytesEqual(m.signatureKey, published))) {
-        await _backend.clearRejoin(id, other); // someone already repaired it
-        return;
-      }
       if (current.isNotEmpty) {
         await _withCommitRetry(id, () async {
           if (!_engine.members(groupId: gid).any((m) => utf8.decode(m) == other)) return;
@@ -455,6 +527,7 @@ class MessagingService {
       await _recordSubs.remove(id)?.cancel();
       await _rejoinSubs.remove(id)?.cancel();
       _rejoinTimers.remove(id)?.cancel();
+      _gapTimers.remove(id)?.cancel();
       if (_engine.hasGroup(groupId: _gid(id))) {
         await _engine.deleteGroup(groupId: _gid(id));
         await _persistEngine();
@@ -467,6 +540,7 @@ class MessagingService {
     }
     c.record = record;
     await _saveConv(c);
+    _watchGap(c);
     await _reconcile(c);
     _emit();
   }
@@ -512,6 +586,10 @@ class MessagingService {
         ..lastRotation = _now().millisecondsSinceEpoch;
       await _saveConv(c);
       await _checkKeys(c);
+      _rejoinTimers.remove(c.id)?.cancel();
+      if (_rejoinAsked.remove(c.id)) {
+        await _backend.clearRejoin(c.id, uid).catchError((Object _) {});
+      }
       _watchEnvelopes(c.id);
     } catch (_) {
       // Invalid or stale welcome (e.g. key package already used): ignore.
@@ -525,7 +603,11 @@ class MessagingService {
     final c = _convs[id];
     final queue = _buffer[id];
     final gid = _gid(id);
-    if (c == null || queue == null || queue.isEmpty || !_engine.hasGroup(groupId: gid)) return;
+    if (c == null || !_engine.hasGroup(groupId: gid)) return;
+    if (queue == null || queue.isEmpty) {
+      _watchGap(c);
+      return;
+    }
     queue.sort((a, b) => a.epoch != b.epoch ? a.epoch.compareTo(b.epoch) : a.id.compareTo(b.id));
     var changed = false;
     while (queue.isNotEmpty && _engine.hasGroup(groupId: gid)) {
@@ -576,9 +658,13 @@ class MessagingService {
       queue.removeAt(0);
       changed = true;
     }
-    if (!changed) return;
+    if (!changed) {
+      _watchGap(c);
+      return;
+    }
     await _persistEngine();
     await _saveConv(c);
+    _watchGap(c);
     if (!c.removed) {
       await _checkKeys(c);
       await _reconcile(c);

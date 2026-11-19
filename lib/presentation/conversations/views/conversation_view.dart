@@ -172,7 +172,7 @@ class _ConversationViewState extends State<ConversationView> {
               actions: [SizedBox.shrink()],
             ),
           Expanded(
-            child: !ready
+            child: !ready && messages.isEmpty
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),

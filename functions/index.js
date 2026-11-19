@@ -5,7 +5,7 @@ import { onValueCreated } from 'firebase-functions/v2/database';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 
-import { buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff } from './lib.js';
+import { buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune } from './lib.js';
 
 initializeApp();
 
@@ -43,7 +43,8 @@ export const pruneOldEnvelopes = onSchedule({ schedule: 'every 24 hours', region
   for (const cid of conversations) {
     const old = await db.ref(`mlsMessages/${cid}`).orderByChild('ts').endAt(cutoff).get();
     old.forEach((child) => {
-      updates[`mlsMessages/${cid}/${child.key}`] = null;
+      // Messages after 30 days; commits are kept for 180 days.
+      if (shouldPrune(child.val(), Date.now())) updates[`mlsMessages/${cid}/${child.key}`] = null;
     });
   }
   const welcomes = (await db.ref('welcomes').get()).val() ?? {};

@@ -202,6 +202,10 @@ class MemoryConversationBackend implements ConversationBackend {
 
   final Map<String, Set<String>> rejoin = {};
 
+  /// Simulates server-side retention: removes envelopes matching [test].
+  void pruneEnvelopes(String conversationId, bool Function(Envelope) test) =>
+      envelopes[conversationId]?.removeWhere(test);
+
   @override
   Future<void> requestRejoin(String conversationId, String uid) async {
     if (!(conversations[conversationId]?.members.containsKey(uid) ?? false)) throw StateError('permission-denied');

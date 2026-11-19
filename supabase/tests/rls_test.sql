@@ -173,4 +173,19 @@ insert into reports (reported, reason) values (:'C', 'spam');
 select t_count('select * from reports', 0);                                    -- write-only
 
 reset role;
+
+\echo retention
+insert into mls_messages (conversation_id, id, sender, epoch, kind, payload, ts) values
+  (:'GROUP', 'old-app', :'A', 1, 'app', 'eA==', now() - interval '31 days'),
+  (:'GROUP', 'new-app', :'A', 1, 'app', 'eA==', now() - interval '29 days'),
+  (:'GROUP', 'old-commit-31', :'A', 1, 'commit', 'eA==', now() - interval '31 days'),
+  (:'GROUP', 'old-commit-181', :'A', 1, 'commit', 'eA==', now() - interval '181 days');
+select prune_old_data();
+select t_count($$select * from mls_messages where id = 'old-app'$$, 0);
+select t_count($$select * from mls_messages where id = 'new-app'$$, 1);
+select t_count($$select * from mls_messages where id = 'old-commit-31'$$, 1);   -- commits live longer
+select t_count($$select * from mls_messages where id = 'old-commit-181'$$, 0);
+set role authenticated;
+select t_fail('select prune_old_data()');                                      -- not callable by users
+reset role;
 \echo ALL SUPABASE RLS TESTS PASSED
