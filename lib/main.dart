@@ -3,6 +3,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,7 @@ import 'core/security/app_lock.dart';
 import 'core/theme/app_theme.dart';
 import 'data/firebase/firebase_auth_repository.dart';
 import 'data/firebase/firebase_conversation_backend.dart';
+import 'data/firebase/firebase_push_registry.dart';
 import 'data/local/file_secure_store.dart';
 import 'data/firebase/firebase_profile_repository.dart';
 import 'domain/entities/app_user.dart';
@@ -19,6 +21,7 @@ import 'domain/repositories/auth_repository.dart';
 import 'domain/entities/user_profile.dart';
 import 'domain/repositories/conversation_backend.dart';
 import 'domain/repositories/profile_repository.dart';
+import 'domain/repositories/push_registry.dart';
 import 'firebase_options.dart';
 import 'presentation/auth/view_models/auth_view_model.dart';
 import 'presentation/auth/views/login_view.dart';
@@ -85,6 +88,9 @@ Future<void> main() async {
         Provider<AuthRepository>(create: (_) => FirebaseAuthRepository(FirebaseAuth.instance)),
         Provider<ConversationBackend>(create: (_) => FirebaseConversationBackend(FirebaseDatabase.instance)),
         Provider<SecureStoreFactory>.value(value: FileSecureStore.open),
+        Provider<PushRegistry>(
+          create: (_) => FirebasePushRegistry(FirebaseDatabase.instance, FirebaseMessaging.instance),
+        ),
         Provider<ProfileRepository>(create: (_) => FirebaseProfileRepository(FirebaseDatabase.instance)),
         ChangeNotifierProvider<AuthViewModel>(create: (context) => AuthViewModel(context.read<AuthRepository>())),
         ChangeNotifierProvider<ProfileViewModel>(

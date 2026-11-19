@@ -187,8 +187,12 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - [x] Aviso em aparelhos com root/jailbreak (o controle real no servidor é o App Check).
 - O iOS não permite bloquear prints; o app apenas oculta o conteúdo no multitarefa.
 
-### Etapa 9. Notificações sem vazamento `[ ]`
-- [ ] Push sem conteúdo; o app busca e decifra localmente.
+### Etapa 9. Notificações sem vazamento `[x]`
+- [x] Token FCM por aparelho em `pushTokens/{uid}` (privado; removido ao sair).
+- [x] Cloud Function `notifyNewEnvelope`: avisa os outros membros com texto genérico "Nova mensagem", sem remetente, conversa ou conteúdo; commits não notificam; tokens mortos são apagados.
+- [x] Cloud Function `pruneOldEnvelopes`: apaga envelopes e Welcomes com mais de 30 dias.
+- **Owner:** fazer o deploy (`firebase deploy --only functions,database`), habilitar o plano Blaze, enviar a chave APNs ao Firebase e ativar Push Notifications + Background Modes no Xcode.
+- Consequência da retenção: quem ficar mais de 30 dias sem abrir o app perde commits e precisa ser adicionado de novo aos grupos.
 
 ### Etapa 10. Backup cifrado `[ ]`
 - [ ] Implementar o desenho da seção 3.2 (código de recuperação + metade no servidor + Argon2id + AES-256-GCM).

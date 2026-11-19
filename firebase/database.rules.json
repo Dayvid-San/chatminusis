@@ -157,7 +157,10 @@
           "$other": {
             ".validate": false
           }
-        }
+        },
+        ".indexOn": [
+          "ts"
+        ]
       }
     },
     "welcomes": {
@@ -179,6 +182,27 @@
             ".validate": "newData.isString() && newData.val().length <= 1048576"
           },
           "ts": {
+            ".validate": "newData.val() == now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "pushTokens": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$device": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.hasChildren(['token', 'platform', 'updatedAt'])",
+          "token": {
+            ".validate": "newData.isString() && newData.val().length <= 4096"
+          },
+          "platform": {
+            ".validate": "newData.val() == 'android' || newData.val() == 'ios'"
+          },
+          "updatedAt": {
             ".validate": "newData.val() == now"
           },
           "$other": {
