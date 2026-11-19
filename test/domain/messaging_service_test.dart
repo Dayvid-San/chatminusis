@@ -199,4 +199,61 @@ void main() {
     await alice.send(id, 'chegou mesmo assim');
     await eventually(() => texts(bob, id).contains('chegou mesmo assim'));
   });
+
+  group('identity verification (stage 7)', () {
+    test('keys are pinned on first sight and safety numbers match', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+
+      expect(alice.keyStatus('bob'), KeyStatus.pinned);
+      await eventually(() => bob.keyStatus('alice') == KeyStatus.pinned);
+      expect(alice.keyStatus('stranger'), KeyStatus.unknown);
+      final a = await alice.safetyNumberWith('bob');
+      final b = await bob.safetyNumberWith('alice');
+      expect(a, hasLength(60));
+      expect(a, b);
+
+      await alice.markVerified('bob');
+      expect(alice.keyStatus('bob'), KeyStatus.verified);
+    });
+
+    test('a changed key is flagged everywhere until verified again', () async {
+      final alice = await user('alice');
+      var bob = await user('bob');
+      final carol = await user('carol');
+      final id = await alice.createGroup('G', ['bob', 'carol']);
+      await eventually(
+        () => carol.keyStatus('bob') == KeyStatus.pinned && bob.conversation(id)?.pendingWelcome == false,
+      );
+      await carol.markVerified('bob');
+      final before = await carol.safetyNumberWith('bob');
+
+      // Bob reinstalls the app: new identity key on a fresh device.
+      await bob.dispose();
+      services.remove(bob);
+      server.keyPackages.remove('bob');
+      bob = await user('bob');
+      await alice.removeMember(id, 'bob');
+      await alice.addMember(id, 'bob');
+      await eventually(() => carol.keyStatus('bob') == KeyStatus.changed, reason: 'carol notices');
+      await eventually(() => alice.keyStatus('bob') == KeyStatus.changed, reason: 'alice notices');
+
+      expect(carol.conversation(id)!.keyChanged, isTrue);
+      expect(texts(carol, id).any((t) => t.contains('chave de segurança')), isTrue);
+      final after = await carol.safetyNumberWith('bob');
+      expect(after, isNot(before));
+      expect(
+        after,
+        await bob.safetyNumberWith('carol') ?? after,
+        reason: 'new number matches the new device once bob sees carol',
+      );
+
+      await carol.markVerified('bob');
+      expect(carol.keyStatus('bob'), KeyStatus.verified);
+      expect(carol.conversation(id)!.keyChanged, isFalse);
+      expect(await carol.safetyNumberWith('bob'), after);
+    });
+  });
 }

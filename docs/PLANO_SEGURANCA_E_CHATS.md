@@ -170,10 +170,12 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - [x] Rotação automática das próprias chaves a cada 7 dias (e manual).
 - [x] Testes: 28 no núcleo Rust, 4 na ponte e 10 de ponta a ponta no serviço Dart com a biblioteca real.
 
-### Etapa 7. Verificação de identidade `[ ]`
-- [ ] Número de segurança / QR code por contato.
-- [ ] Aviso visível quando a identidade de um contato mudar.
-- [ ] Marcar contato como verificado.
+### Etapa 7. Verificação de identidade `[x]`
+- [x] Chave de cada contato fixada no primeiro contato (TOFU), salva no cofre local.
+- [x] Número de segurança de 60 dígitos (SHA-512 iterado, simétrico) + QR code por contato.
+- [x] Troca de chave gera aviso na lista, banner e mensagem de sistema em todas as conversas com a pessoa; o status volta a "não verificado".
+- [x] Marcar/desmarcar como verificado.
+- Leitura do QR pela câmera não foi incluída (comparar o número visualmente ou em voz alta tem a mesma segurança).
 
 ### Etapa 8. Proteção no aparelho `[ ]`
 - [ ] Banco local cifrado (SQLCipher) para histórico e estado MLS.
