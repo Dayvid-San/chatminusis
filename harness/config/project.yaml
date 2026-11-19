@@ -1,0 +1,32 @@
+# Configuração do harness (legível por humanos e agentes)
+
+branches:
+  production: master
+  integration: develop          # destino obrigatório de todo trabalho concluído
+  work_prefixes: [feat, fix, refactor, perf, docs, test, chore, ci, security, hotfix]
+  work_branch_base: develop     # hotfix/* é exceção: sai de master
+  merge_target: develop
+  merge_strategy: no-ff
+  protected: [master, develop]  # sem force-push
+
+commits:
+  convention: conventional-commits
+  max_subject_length: 72
+
+checks:                          # rodar antes de todo merge em develop
+  - flutter pub get
+  - dart format --set-exit-if-changed lib test
+  - flutter analyze
+  - flutter test
+
+security_review_required_paths:
+  - lib/core/services/auth_service.dart
+  - lib/core/crypto/**
+  - lib/data/services/**
+  - database.rules.json
+  - pubspec.yaml
+
+language:
+  code: en
+  ui: pt-BR
+  docs: pt-BR

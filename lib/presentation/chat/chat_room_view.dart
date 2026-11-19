@@ -81,7 +81,7 @@ class _ChatRoomViewState extends State<ChatRoomView> {
     final currentUser = authViewModel.currentUser;
 
     if (currentUser != null) {
-      final userName = currentUser.email?.split('@').first ?? 'Anonymous';
+      final userName = authViewModel.displayName;
 
       final didSend = await chatViewModel.sendMessage(
         text: text,
@@ -92,6 +92,40 @@ class _ChatRoomViewState extends State<ChatRoomView> {
       if (didSend && mounted) {
         _messageController.clear();
       }
+    }
+  }
+
+  Future<void> _handleEditName() async {
+    final authViewModel = context.read<AuthViewModel>();
+    final controller = TextEditingController(text: authViewModel.displayName);
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Seu nome'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 30,
+          decoration: const InputDecoration(labelText: 'Nome'),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (newName != null && newName.trim().isNotEmpty) {
+      await authViewModel.updateDisplayName(newName);
     }
   }
 
@@ -112,6 +146,11 @@ class _ChatRoomViewState extends State<ChatRoomView> {
           centerTitle: true,
           title: const Text('Flugo Chat'),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: _handleEditName,
+              tooltip: 'Alterar nome',
+            ),
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: () => authViewModel.signOut(),

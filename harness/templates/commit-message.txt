@@ -1,0 +1,7 @@
+<tipo>(<escopo>): <resumo no imperativo, até 72 caracteres>
+
+# Por que esta mudança é necessária?
+
+# O que muda para o usuário (se algo)?
+
+# Refs: etapa N do docs/PLANO_SEGURANCA_E_CHATS.md

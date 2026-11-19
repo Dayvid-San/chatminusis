@@ -52,15 +52,36 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> signUp(String email, String password) async {
-    return register(email, password);
+  Future<bool> signUp(String email, String password, {String? displayName}) async {
+    return register(email, password, displayName: displayName);
   }
 
-  Future<bool> register(String email, String password) async {
+  /// Name shown in the chat: chosen display name, or the email prefix.
+  String get displayName {
+    final user = currentUser;
+    final name = user?.displayName?.trim() ?? '';
+    if (name.isNotEmpty) return name;
+    return user?.email?.split('@').first ?? 'Anonymous';
+  }
+
+  Future<bool> updateDisplayName(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return false;
+    try {
+      await _authService.updateDisplayName(trimmed);
+      notifyListeners();
+      return true;
+    } catch (_) {
+      _setError('Unable to update name right now.');
+      return false;
+    }
+  }
+
+  Future<bool> register(String email, String password, {String? displayName}) async {
     _setLoading(true);
     _setError('');
     try {
-      await _authService.signUp(email, password);
+      await _authService.signUp(email, password, displayName: displayName);
       _setLoading(false);
       return true;
     } on FirebaseAuthException catch (error) {
