@@ -20,6 +20,21 @@ class NotAllowedException implements Exception {
   final String reason;
 }
 
+/// Trust state of a contact's identity key on this device.
+enum KeyStatus {
+  /// Never seen in any conversation.
+  unknown,
+
+  /// Pinned on first sight (trust on first use), not verified in person.
+  pinned,
+
+  /// Safety number confirmed by the user.
+  verified,
+
+  /// Differs from the pinned key: reinstall, new phone, or an attack.
+  changed,
+}
+
 /// Maximum members per group (decision pending with the Owner; default 256).
 const maxGroupMembers = 256;
 
@@ -58,6 +73,7 @@ class MessagingService {
   late ChatCryptoClient _engine;
   late Uint8List _stateKey;
   final Map<String, _Conv> _convs = {};
+  final Map<String, _Pin> _pins = {};
   final Map<String, List<Envelope>> _buffer = {};
   final Map<String, StreamSubscription<Envelope>> _envelopeSubs = {};
   final Map<String, StreamSubscription<ConversationRecord?>> _recordSubs = {};
@@ -85,6 +101,7 @@ class MessagingService {
     await _lock.run(() async {
       await _loadOrCreateEngine();
       await _loadConversations();
+      await _loadPins();
       await _purgeExpired();
     });
     await _ensureKeyPackages();
@@ -162,6 +179,95 @@ class MessagingService {
     if (!_changes.isClosed) _changes.add(null);
   }
 
+  // ------------------------------------------------------ identity pins
+
+  Future<void> _loadPins() async {
+    final raw = await _store.read('pins');
+    if (raw == null) return;
+    (jsonDecode(utf8.decode(raw)) as Map<String, Object?>).forEach((uid, v) {
+      _pins[uid] = _Pin.fromJson((v as Map).cast<String, Object?>());
+    });
+  }
+
+  Future<void> _savePins() =>
+      _store.write('pins', utf8.encode(jsonEncode({for (final e in _pins.entries) e.key: e.value.toJson()})));
+
+  /// Pins every member's key on first sight and flags changes afterwards.
+  Future<void> _checkKeys(_Conv c) async {
+    final gid = _gid(c.id);
+    if (!_engine.hasGroup(groupId: gid)) return;
+    var changed = false;
+    for (final m in _engine.memberKeys(groupId: gid)) {
+      final who = utf8.decode(m.identity);
+      if (who == uid) continue;
+      final key = base64Encode(m.signatureKey);
+      final pin = _pins[who];
+      if (pin == null) {
+        _pins[who] = _Pin(key: key);
+        changed = true;
+      } else if (pin.key != key && pin.pendingKey != key) {
+        pin
+          ..pendingKey = key
+          ..verified = false;
+        changed = true;
+        for (final other in _convs.values.where((x) => !x.removed && _hasMember(x, who))) {
+          other.messages.add(
+            DecryptedMessage(
+              id: 'key-$who-${_now().millisecondsSinceEpoch}',
+              conversationId: other.id,
+              senderUid: '',
+              text: 'A chave de segurança de um participante mudou. Confira em "Verificar segurança".',
+              timestamp: _now().millisecondsSinceEpoch,
+              outgoing: false,
+            ),
+          );
+          await _saveConv(other);
+        }
+      }
+    }
+    if (changed) await _savePins();
+  }
+
+  bool _hasMember(_Conv c, String who) {
+    final gid = _gid(c.id);
+    return _engine.hasGroup(groupId: gid) && _engine.members(groupId: gid).any((m) => utf8.decode(m) == who);
+  }
+
+  KeyStatus keyStatus(String otherUid) {
+    final pin = _pins[otherUid];
+    if (pin == null) return KeyStatus.unknown;
+    if (pin.pendingKey != null) return KeyStatus.changed;
+    return pin.verified ? KeyStatus.verified : KeyStatus.pinned;
+  }
+
+  /// 60-digit number both people must see identically. Uses the key currently
+  /// in use (the new one, if it changed). Null if the person was never seen.
+  Future<String?> safetyNumberWith(String otherUid) async {
+    final pin = _pins[otherUid];
+    if (pin == null) return null;
+    return safetyNumber(
+      myIdentity: _myId,
+      myKey: _engine.signaturePublicKey,
+      theirIdentity: utf8.encode(otherUid),
+      theirKey: base64Decode(pin.pendingKey ?? pin.key),
+    );
+  }
+
+  /// The user compared safety numbers: trust the current key (accepting a
+  /// change, if there was one).
+  Future<void> markVerified(String otherUid, {bool verified = true}) async {
+    final pin = _pins[otherUid];
+    if (pin == null) return;
+    if (pin.pendingKey != null) {
+      pin
+        ..key = pin.pendingKey!
+        ..pendingKey = null;
+    }
+    pin.verified = verified;
+    await _lock.run(_savePins);
+    _emit();
+  }
+
   // --------------------------------------------------------------- reads
 
   List<ConversationSummary> conversations() {
@@ -192,6 +298,7 @@ class MessagingService {
       lastMessage: c.messages.isEmpty ? null : c.messages.last,
       pendingWelcome: !has,
       membershipMismatch: has && server != null && !_sameSet(server, mls.toSet()),
+      keyChanged: mls.any((m) => m != uid && keyStatus(m) == KeyStatus.changed),
     );
   }
 
@@ -285,6 +392,7 @@ class MessagingService {
         ..joinedEpoch = _engine.epoch(groupId: gid).toInt()
         ..lastRotation = _now().millisecondsSinceEpoch;
       await _saveConv(c);
+      await _checkKeys(c);
       _watchEnvelopes(c.id);
     } catch (_) {
       // Invalid or stale welcome (e.g. key package already used): ignore.
@@ -353,6 +461,7 @@ class MessagingService {
     await _persistEngine();
     await _saveConv(c);
     if (!c.removed) {
+      await _checkKeys(c);
       await _reconcile(c);
       await _rotateIfStale(c);
     }
@@ -495,6 +604,7 @@ class MessagingService {
       ..lastRotation = _now().millisecondsSinceEpoch;
     await _persistEngine();
     await _saveConv(c);
+    await _checkKeys(c);
     _watch(record.id);
     _emit();
   }
@@ -533,6 +643,7 @@ class MessagingService {
     _markProcessed(c, env.id);
     await _persistEngine();
     await _saveConv(c);
+    await _checkKeys(c);
   }
 
   /// Runs [build] + publish, retrying after catching up when another member
@@ -743,6 +854,20 @@ class _Conv {
     );
     return c;
   }
+}
+
+class _Pin {
+  _Pin({required this.key});
+
+  String key;
+  String? pendingKey;
+  bool verified = false;
+
+  Map<String, Object?> toJson() => {'k': key, 'p': pendingKey, 'v': verified};
+
+  factory _Pin.fromJson(Map<String, Object?> j) => _Pin(key: j['k'] as String)
+    ..pendingKey = j['p'] as String?
+    ..verified = j['v'] as bool? ?? false;
 }
 
 /// Serializes async operations on the MLS state.

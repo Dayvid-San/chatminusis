@@ -124,6 +124,7 @@ class ConversationSummary {
     this.lastMessage,
     this.pendingWelcome = false,
     this.membershipMismatch = false,
+    this.keyChanged = false,
   });
 
   final String id;
@@ -142,4 +143,7 @@ class ConversationSummary {
 
   /// Server membership differs from the cryptographic group.
   final bool membershipMismatch;
+
+  /// A member's identity key changed since it was pinned.
+  final bool keyChanged;
 }

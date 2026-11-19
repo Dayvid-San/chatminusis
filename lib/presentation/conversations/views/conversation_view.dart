@@ -5,17 +5,12 @@ import '../../../domain/entities/conversation.dart';
 import '../../chat/widgets/message_bubble_widget.dart';
 import '../view_models/conversations_view_model.dart';
 import 'members_view.dart';
-
-/// Optional hook to open the identity verification screen (stage 7).
-typedef VerifyBuilder = Widget Function(BuildContext context, String conversationId);
+import 'verify_view.dart';
 
 class ConversationView extends StatefulWidget {
-  const ConversationView({super.key, required this.conversationId, this.verifyBuilder});
+  const ConversationView({super.key, required this.conversationId});
 
   final String conversationId;
-  final VerifyBuilder? verifyBuilder;
-
-  static VerifyBuilder? defaultVerifyBuilder;
 
   @override
   State<ConversationView> createState() => _ConversationViewState();
@@ -65,10 +60,14 @@ class _ConversationViewState extends State<ConversationView> {
           ),
         );
       case 'verify':
-        final builder = widget.verifyBuilder ?? ConversationView.defaultVerifyBuilder;
-        if (builder != null) {
-          await Navigator.of(context).push(MaterialPageRoute<void>(builder: (ctx) => builder(ctx, _id)));
-        }
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ChangeNotifierProvider.value(
+              value: vm,
+              child: VerifyView(conversationId: _id),
+            ),
+          ),
+        );
       case 'rotate':
         final error = await vm.run(() => vm.messaging.rotateKeys(_id));
         if (mounted) _snack(error ?? 'Chaves renovadas.');
@@ -160,6 +159,12 @@ class _ConversationViewState extends State<ConversationView> {
       ),
       body: Column(
         children: [
+          if (c?.keyChanged ?? false)
+            MaterialBanner(
+              content: const Text('A chave de segurança de um participante mudou.'),
+              leading: const Icon(Icons.warning_amber, color: Colors.orange),
+              actions: [TextButton(onPressed: () => _menu(vm, 'verify'), child: const Text('Verificar'))],
+            ),
           if (c?.membershipMismatch ?? false)
             const MaterialBanner(
               content: Text('Os membros do servidor diferem do grupo criptografado. Verifique a segurança.'),

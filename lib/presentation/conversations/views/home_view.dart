@@ -126,7 +126,9 @@ class HomeView extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: c.membershipMismatch ? const Icon(Icons.warning_amber, color: Colors.orange) : null,
+                  trailing: c.membershipMismatch || c.keyChanged
+                      ? const Icon(Icons.warning_amber, color: Colors.orange)
+                      : null,
                   onTap: () => _open(context, c.id),
                 );
               },
