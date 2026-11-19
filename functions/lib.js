@@ -57,3 +57,15 @@ export function shouldPrune(envelope, nowMs) {
   const days = envelope.kind === 'commit' ? COMMIT_RETENTION_DAYS : RETENTION_DAYS;
   return envelope.ts < retentionCutoff(nowMs, days);
 }
+
+/** Alert sent to the owner's devices when the backup share was downloaded. */
+export const BACKUP_ALERT_BODY = 'Seu backup foi baixado. Se não foi você, troque sua senha.';
+
+export function buildBackupAlert(tokens) {
+  return {
+    tokens,
+    notification: { title: GENERIC_TITLE, body: BACKUP_ALERT_BODY },
+    android: { priority: 'high', notification: { tag: 'chatminusis-backup' } },
+    apns: { headers: { 'apns-collapse-id': 'chatminusis-backup' }, payload: { aps: { sound: 'default' } } },
+  };
+}

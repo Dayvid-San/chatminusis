@@ -10,15 +10,33 @@ class SupabaseBackupBackend implements BackupBackend {
 
   final SupabaseClient _client;
 
+  /// `get_backup_share()`: fresh login required, logged, rate limited.
   @override
   Future<Uint8List?> getServerShare(String uid) async {
-    final row = await _client.from('backup_shares').select('share').eq('user_id', uid).maybeSingle();
-    return row == null ? null : base64Decode(row['share'] as String);
+    try {
+      final share = await _client.rpc<String?>('get_backup_share');
+      return share == null ? null : base64Decode(share);
+    } on PostgrestException catch (e) {
+      if (e.message.contains('reauth_required')) throw const ReauthRequiredException();
+      if (e.message.contains('rate_limited')) throw const RateLimitedException();
+      rethrow;
+    }
   }
 
   @override
   Future<void> putServerShare(String uid, Uint8List share) =>
       _client.from('backup_shares').upsert({'user_id': uid, 'share': base64Encode(share)});
+
+  @override
+  Future<List<DateTime>> recentShareDownloads(String uid) async {
+    final rows = await _client
+        .from('backup_downloads')
+        .select('ts')
+        .eq('user_id', uid)
+        .order('ts', ascending: false)
+        .limit(10);
+    return [for (final r in rows) DateTime.parse(r['ts'] as String).toLocal()];
+  }
 
   @override
   Future<BackupInfo?> getInfo(String uid) async {

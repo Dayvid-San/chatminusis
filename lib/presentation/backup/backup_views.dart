@@ -10,6 +10,8 @@ String backupErrorText(BackupError e) => switch (e) {
   BackupError.wrongCode => 'Código de recuperação incorreto.',
   BackupError.wrongAccount => 'Este backup pertence a outra conta.',
   BackupError.invalidCode => 'O código deve ter 52 caracteres (letras e números).',
+  BackupError.reauthRequired => 'Confirme sua senha para continuar.',
+  BackupError.rateLimited => 'Muitas tentativas. Tente de novo mais tarde.',
 };
 
 /// Entry in the security screen.
@@ -45,6 +47,7 @@ class BackupView extends StatefulWidget {
 class _BackupViewState extends State<BackupView> {
   bool? _enabled;
   DateTime? _last;
+  List<DateTime> _downloads = const [];
   bool _busy = false;
 
   @override
@@ -56,10 +59,12 @@ class _BackupViewState extends State<BackupView> {
   Future<void> _load() async {
     final enabled = await widget.backup.isEnabled();
     final last = await widget.backup.lastBackup();
+    final downloads = await widget.backup.recentDownloads().catchError((Object _) => <DateTime>[]);
     if (mounted) {
       setState(() {
         _enabled = enabled;
         _last = last;
+        _downloads = downloads;
       });
     }
   }
@@ -126,6 +131,18 @@ class _BackupViewState extends State<BackupView> {
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton(onPressed: _enable, child: const Text('Gerar novo código (invalida o antigo)')),
+                  if (_downloads.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Downloads recentes da chave do servidor',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const Text(
+                      'Acontecem ao restaurar o backup num aparelho novo. Se algum não foi você, troque sua senha.',
+                    ),
+                    for (final d in _downloads)
+                      ListTile(dense: true, leading: const Icon(Icons.download), title: Text('${d.toLocal()}')),
+                  ],
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => _busyRun(widget.backup.disable, 'Backup apagado do servidor.'),
@@ -202,9 +219,12 @@ class _CodeDialogState extends State<_CodeDialog> {
 
 /// Offered on a fresh device when the account has a backup.
 class RestoreView extends StatefulWidget {
-  const RestoreView({super.key, required this.backup, required this.onDone});
+  const RestoreView({super.key, required this.backup, required this.onDone, required this.onReauth});
 
   final BackupService backup;
+
+  /// Confirms the account password again; true on success.
+  final Future<bool> Function(String password) onReauth;
 
   /// Called after restoring (true) or choosing to start fresh (false).
   final void Function(bool restored) onDone;
@@ -215,12 +235,15 @@ class RestoreView extends StatefulWidget {
 
 class _RestoreViewState extends State<RestoreView> {
   final _code = TextEditingController();
+  final _password = TextEditingController();
+  bool _needsPassword = false;
   bool _busy = false;
   String _error = '';
 
   @override
   void dispose() {
     _code.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -230,10 +253,20 @@ class _RestoreViewState extends State<RestoreView> {
       _error = '';
     });
     try {
+      if (_needsPassword) {
+        if (!await widget.onReauth(_password.text)) {
+          setState(() => _error = 'Senha incorreta.');
+          return;
+        }
+        _password.clear();
+      }
       await widget.backup.restore(_code.text);
       widget.onDone(true);
     } on BackupException catch (e) {
-      setState(() => _error = backupErrorText(e.error));
+      setState(() {
+        _error = backupErrorText(e.error);
+        if (e.error == BackupError.reauthRequired) _needsPassword = true;
+      });
     } catch (_) {
       setState(() => _error = 'Não foi possível restaurar agora.');
     } finally {
@@ -257,6 +290,16 @@ class _RestoreViewState extends State<RestoreView> {
           textCapitalization: TextCapitalization.characters,
           decoration: const InputDecoration(labelText: 'Código de recuperação', border: OutlineInputBorder()),
         ),
+        if (_needsPassword) ...[
+          const SizedBox(height: 12),
+          const Text('Por segurança, a chave do backup só é liberada logo após você confirmar a senha da conta.'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _password,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Senha da conta', border: OutlineInputBorder()),
+          ),
+        ],
         if (_error.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 12),

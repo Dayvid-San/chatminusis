@@ -76,6 +76,7 @@ void main() {
 
     final newStore = MemorySecureStore();
     final restorer = BackupService(backend: backups, store: newStore, uid: 'bob', clock: () => now);
+    expect(backups.shareFetches, 0, reason: 'enabling and backing up never read the share back from the server');
     await expectLater(
       restorer.restore(generateRecoveryCode()),
       throwsA(isA<BackupException>().having((e) => e.error, 'error', BackupError.wrongCode)),
@@ -149,5 +150,51 @@ void main() {
       BackupService(backend: backups, store: MemorySecureStore(), uid: 'alice').restore(generateRecoveryCode()),
       throwsA(isA<BackupException>().having((e) => e.error, 'error', BackupError.noBackup)),
     );
+  });
+
+  group('server share access (R6)', () {
+    test('daily backups use the device copy and never ask the server', () async {
+      final store = MemorySecureStore();
+      final alice = await start('alice', store);
+      final svc = BackupService(backend: backups, store: store, uid: 'alice', clock: () => now);
+      await svc.enable(alice);
+      backups.recentLogin = false; // no fresh login at all
+      now = now.add(const Duration(days: 2));
+      await svc.maybeAutoBackup(alice); // would throw if it needed the server share
+      await svc.backupNow(alice);
+      expect(backups.shareFetches, 0);
+      expect(backups.downloads, isEmpty);
+    });
+
+    test('restoring needs a fresh login; the download is logged for the owner', () async {
+      final store = MemorySecureStore();
+      final alice = await start('alice', store);
+      final code = await BackupService(backend: backups, store: store, uid: 'alice').enable(alice);
+
+      final fresh = BackupService(backend: backups, store: MemorySecureStore(), uid: 'alice');
+      backups.recentLogin = false;
+      await expectLater(
+        fresh.restore(code),
+        throwsA(isA<BackupException>().having((e) => e.error, 'error', BackupError.reauthRequired)),
+      );
+      expect(backups.downloads, isEmpty, reason: 'a stale session gets nothing and leaves no trail');
+
+      backups.recentLogin = true; // the user confirmed the password
+      await fresh.restore(code);
+      expect(backups.downloads, hasLength(1));
+      expect(await fresh.recentDownloads(), hasLength(1));
+    });
+
+    test('a stolen session without the recovery code gets nothing useful even with a fresh login', () async {
+      final store = MemorySecureStore();
+      final alice = await start('alice', store);
+      await BackupService(backend: backups, store: store, uid: 'alice').enable(alice);
+      final thief = BackupService(backend: backups, store: MemorySecureStore(), uid: 'alice');
+      await expectLater(
+        thief.restore(generateRecoveryCode()),
+        throwsA(isA<BackupException>().having((e) => e.error, 'error', BackupError.wrongCode)),
+      );
+      expect(backups.downloads, hasLength(1), reason: 'the attempt is on the owner\'s trail');
+    });
   });
 }

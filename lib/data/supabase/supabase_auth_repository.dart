@@ -71,5 +71,12 @@ class SupabaseAuthRepository implements AuthRepository {
       _guard(() => _auth.updateUser(UserAttributes(data: {'display_name': name.trim()})));
 
   @override
+  Future<void> reauthenticate(String password) => _guard(() async {
+    final email = _auth.currentUser?.email;
+    if (email != null)
+      await _auth.signInWithPassword(email: email, password: password); // new session, new `amr` timestamp
+  });
+
+  @override
   Future<void> refreshToken() => _guard(() => _auth.refreshSession());
 }

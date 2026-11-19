@@ -57,6 +57,14 @@ class FakeAuthRepository implements AuthRepository {
     user = AppUser(uid: u.uid, email: u.email, emailVerified: u.emailVerified, displayName: name);
   }
 
+  int reauths = 0;
+
+  @override
+  Future<void> reauthenticate(String password) async {
+    if (password != this.password) throw const AuthException(AuthErrorCode.invalidCredentials);
+    reauths++;
+  }
+
   @override
   Future<void> refreshToken() async => tokenRefreshes++;
 }

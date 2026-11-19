@@ -218,7 +218,6 @@
     },
     "backupShares": {
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
         ".write": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
         ".validate": "newData.hasChildren(['share', 'createdAt'])",
         "share": {
@@ -271,6 +270,11 @@
         "$other": {
           ".validate": false
         }
+      }
+    },
+    "backupDownloads": {
+      "$uid": {
+        ".read": "auth != null && auth.token.email_verified == true && auth.uid == $uid"
       }
     }
   }

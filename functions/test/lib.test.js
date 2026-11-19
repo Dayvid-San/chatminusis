@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune, GENERIC_BODY } from '../lib.js';
+import { buildBackupAlert, buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune, GENERIC_BODY } from '../lib.js';
 
 test('notifies every member except the sender', () => {
   assert.deepEqual(recipientsFor({ members: { a: 'admin', b: 'member', c: 'member' } }, 'a'), ['b', 'c']);
@@ -35,4 +35,11 @@ test('messages expire after 30 days, commits after 180', () => {
   assert.equal(shouldPrune({ kind: 'commit', ts: now - 181 * day }, now), true);
   assert.equal(shouldPrune(null, now), false);
   assert.equal(shouldPrune({ kind: 'app' }, now), false);
+});
+
+test('backup alert is a generic warning without any identifying data', () => {
+  const m = buildBackupAlert(['t1', 't2']);
+  assert.deepEqual(m.tokens, ['t1', 't2']);
+  assert.match(m.notification.body, /backup foi baixado/);
+  assert.equal(m.data, undefined);
 });
