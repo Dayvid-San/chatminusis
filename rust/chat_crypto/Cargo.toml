@@ -1,0 +1,24 @@
+[package]
+name = "chat_crypto"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+publish = false
+description = "E2EE core of the chat app (MLS / RFC 9420 via OpenMLS)."
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+openmls = "0.9.2"
+openmls_rust_crypto = "0.6.0"
+openmls_basic_credential = "0.6.0"
+openmls_traits = "0.6.0"
+tls_codec = "0.5"
+thiserror = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

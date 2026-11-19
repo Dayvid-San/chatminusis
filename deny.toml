@@ -1,0 +1,52 @@
+# Dependency policy for all Rust code (run: cargo deny --manifest-path <crate>/Cargo.toml check  (from repo root))
+# Mirrors harness/config/project.yaml -> dependencies.
+
+[graph]
+targets = [
+  "aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android",
+  "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios",
+  "x86_64-unknown-linux-gnu",
+]
+
+[licenses]
+# Permissive only. GPL/AGPL/LGPL/SSPL are rejected (no copyleft in a source-available, non-commercial app).
+allow = [
+  "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause",
+  "ISC", "Zlib", "Unicode-3.0", "Unicode-DFS-2016", "Unlicense", "BSD-1-Clause",
+]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+
+# MPL-2.0 is file-level copyleft: allowed ONLY for these crates, used unmodified,
+# with their notices kept. Any change to their files must be published under MPL-2.0.
+exceptions = [
+  { allow = ["MPL-2.0"], crate = "hpke-rs" },
+  { allow = ["MPL-2.0"], crate = "hpke-rs-crypto" },
+  { allow = ["MPL-2.0"], crate = "hpke-rs-libcrux" },
+  { allow = ["MPL-2.0"], crate = "hpke-rs-rust-crypto" },
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true  # local path deps (chat_crypto) are fine
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+# RUSTSEC-2026-0387 (crypto-bigint 0.5 timing variability) affects the P-256/P-384/
+# secp256k1 code pulled in by openmls_rust_crypto. Our only ciphersuite is
+# X25519/Ed25519, and chat_crypto rejects KeyPackages/groups of any other
+# ciphersuite before their crypto runs, so no secret ever reaches that code.
+# Re-evaluate when openmls_rust_crypto moves to crypto-bigint >= 0.7.6.
+[advisories]
+yanked = "deny"
+# Unmaintained crates deep in flutter_rust_bridge are reported only for our direct deps.
+unmaintained = "workspace"
+ignore = [
+  { id = "RUSTSEC-2026-0387", reason = "affected curves never used: single X25519/Ed25519 ciphersuite enforced in chat_crypto" },
+]

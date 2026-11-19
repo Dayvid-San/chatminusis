@@ -19,9 +19,19 @@ checks:                          # rodar antes de todo merge em develop
   - flutter analyze
   - flutter test
 
+checks_crypto:                   # obrigatório se tocar rust/ ou packages/chat_crypto_ffi/
+  - cargo test --manifest-path rust/chat_crypto/Cargo.toml
+  - cargo clippy --manifest-path rust/chat_crypto/Cargo.toml --all-targets -- -D warnings
+  - (cd rust/chat_crypto && cargo deny check)
+  - (cd packages/chat_crypto_ffi/rust && cargo deny check)
+  - (cd packages/chat_crypto_ffi && cargo build --manifest-path rust/Cargo.toml && flutter test)
+
 security_review_required_paths:
   - lib/core/services/auth_service.dart
   - lib/core/crypto/**
+  - rust/**
+  - packages/chat_crypto_ffi/rust/**
+  - deny.toml
   - lib/data/services/**
   - database.rules.json
   - pubspec.yaml
@@ -32,7 +42,10 @@ language:
   docs: pt-BR
 
 dependencies:
-  allowed_licenses: [MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, Zlib]
+  allowed_licenses: [MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, Zlib, Unicode-3.0, Unicode-DFS-2016]
+  conditional_licenses:          # só as crates listadas em deny.toml, sem modificação
+    MPL-2.0: [hpke-rs, hpke-rs-crypto, hpke-rs-libcrux, hpke-rs-rust-crypto]
+  policy_enforced_by: deny.toml   # cargo deny check
   forbidden_licenses: [GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-3.0, SSPL-1.0]
 
 platforms: [android, ios]
