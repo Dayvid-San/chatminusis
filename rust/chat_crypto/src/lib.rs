@@ -13,6 +13,8 @@ pub mod client;
 pub mod safety;
 pub mod vault;
 
+#[cfg(feature = "pq-draft")]
+pub use client::PQ_HYBRID_CIPHERSUITE;
 pub use client::{
     AddMembersOutput, Client, CommitOutput, Expected, Incoming, MemberInfo, CIPHERSUITE,
 };

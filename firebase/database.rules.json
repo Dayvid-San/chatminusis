@@ -2,12 +2,6 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "messages": {
-      ".read": "auth != null && auth.token.email_verified == true",
-      ".indexOn": [
-        "timestamp"
-      ]
-    },
     "users": {
       "$uid": {
         ".read": "auth != null && auth.token.email_verified == true",

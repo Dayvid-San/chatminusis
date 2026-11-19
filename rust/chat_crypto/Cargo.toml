@@ -11,8 +11,18 @@ description = "E2EE core of the chat app (MLS / RFC 9420 via OpenMLS)."
 # refused. Never enabled in the app: only the self dev-dependency below uses it.
 testing = []
 
+# Draft post-quantum hybrid suite (ML-KEM-768 + X25519, Ed25519 signatures).
+# OFF in the app: the MLS post-quantum drafts are not final yet. Tests turn it
+# on (below) so the multi-suite plumbing is exercised with a real second suite.
+pq-draft = [
+  "openmls/draft-ietf-mls-pq-ciphersuites",
+  "openmls_rust_crypto/draft-ietf-mls-pq-ciphersuites",
+  "openmls_basic_credential/draft-ietf-mls-pq-ciphersuites",
+  "openmls_traits/draft-ietf-mls-pq-ciphersuites",
+]
+
 [dev-dependencies]
-chat_crypto = { path = ".", features = ["testing"] }
+chat_crypto = { path = ".", features = ["testing", "pq-draft"] }
 
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]

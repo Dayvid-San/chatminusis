@@ -13,8 +13,8 @@
 | 3 | R5: limite de busca só no app ✅ | Média | Pequeno | `security/r5-limite-busca` |
 | 4 | R6: acesso ao backup ✅ (e-mail depende de provedor) | Baixa | Pequeno | `security/r6-acesso-backup` |
 | 5 | R3: membro comum remove outros no MLS ✅ (desenho alterado) | Média | Grande | `security/r3-validacao-commits` |
-| 6 | R8: mensagens antigas em texto puro | Info | Mínimo | (ação do Owner) |
-| 7 | R9: criptografia pós-quântica | Info | Médio | `feat/r9-pos-quantico` (futuro) |
+| 6 | R8: mensagens antigas em texto puro 🟡 (falta apagar os dados) | Info | Mínimo | `chore/r8-r9-legado-posquantico` |
+| 7 | R9: criptografia pós-quântica 🟡 (núcleo pronto; migração aguarda o padrão) | Info | Médio | `chore/r8-r9-legado-posquantico` |
 
 ---
 
@@ -180,30 +180,41 @@
 - A renovação de chaves de membros comuns **depende de um admin online**; se nenhum aparecer, a renovação atrasa (as mensagens continuam funcionando).
 - A regra "só admin commita" confia no papel registrado no servidor. Quem controla o banco (o operador) continua podendo se passar por admin; isso é inerente a qualquer desenho sem validação criptográfica de papéis dentro do grupo.
 
-## R8. Mensagens antigas em texto puro no banco `[ ]`
+## R8. Mensagens antigas em texto puro no banco `[~]`
+
+> **Falta uma ação sua:** apagar os dados. Eu não apago dados de produção.
 
 ### Etapa 1. Preparar
-- [ ] (Opcional) Exportar o nó `/messages` se houver algo a guardar.
-- [ ] Script de remoção em `firebase/scripts/` (executado com credencial de admin).
+- [x] Script `functions/scripts/delete-legacy-messages.js`: **só simula por padrão** (conta e informa), apaga apenas com `--confirm`, faz backup local (permissão 600) antes de apagar e só mexe em `/messages`. Testado no emulador (simulação, exclusão sem tocar em outros nós, backup, sala vazia).
+- [x] Regra `messages` removida de `firebase/database.rules.json` (e teste atualizado): **o nó já está fechado para qualquer cliente**, mesmo antes de apagar os dados. O app não lê esse nó.
 
 ### Etapa 2. Executar (Owner)
-- [ ] Apagar o nó `/messages` no console do Firebase ou com o script.
-- [ ] Remover a regra `messages` de `firebase/database.rules.json` e o teste correspondente.
-- [ ] Atualizar `SEGURANCA.md` (R8 → concluído).
+- [ ] Ver quantas mensagens existem: `cd functions && node scripts/delete-legacy-messages.js --project <id-do-projeto>`
+- [ ] Apagar: o mesmo comando com `--confirm` (gera um arquivo de backup com o texto puro: guarde com cuidado ou destrua).
+- [ ] Publicar as regras novas: `firebase deploy --only database`.
+- [ ] Atualizar `SEGURANCA.md` (R8 → concluído) depois de apagar.
 
 ---
 
-## R9. Criptografia pós-quântica `[ ]`
+## R9. Criptografia pós-quântica `[~]`
+
+> **Núcleo pronto; a migração em si espera o padrão ficar estável.** Hoje as suítes pós-quânticas do MLS ainda são *rascunho* no OpenMLS (`draft-ietf-mls-pq-ciphersuites`). Colocar um rascunho no app criaria grupos que podem deixar de existir quando o padrão mudar. O que dá para fazer com segurança já foi feito.
 
 ### Etapa 1. Acompanhar
-- [ ] Acompanhar a ciphersuite híbrida (X25519 + ML-KEM) do MLS sair de rascunho e chegar a uma versão estável do OpenMLS.
+- [x] Situação em 19/11/2026: OpenMLS **0.9.2** (a mais recente), com a suíte híbrida `MLS_128_MLKEM768X25519_AES128GCM_SHA256_Ed25519` (ML-KEM-768 + X25519, assinatura Ed25519) disponível só atrás da feature de rascunho.
+- [ ] Reavaliar a cada versão do OpenMLS. **Critério para avançar:** a feature de rascunho some (suíte estável) ou o IETF publica o RFC.
 
 ### Etapa 2. Preparar o núcleo para mais de uma suíte
-- [ ] Trocar a constante `CIPHERSUITE` por uma lista de suítes aceitas, com a preferida para grupos novos.
-- [ ] Manter a recusa antecipada de suítes fora da lista (ver nota RUSTSEC-2026-0387 em `deny.toml`).
+- [x] Lista de suítes aceitas + suíte preferida para grupos novos (`Client::with_ciphersuites`), validada: a preferida precisa estar na lista e todas precisam usar o mesmo algoritmo de assinatura (um aparelho tem uma única chave de identidade).
+- [x] Cada grupo guarda a sua suíte; KeyPackages só valem em grupos da mesma suíte (recusados **antes** de rodar a criptografia); Welcome de suíte não aceita é recusado antes de processar.
+- [x] KeyPackages por suíte (`generate_key_packages_for`) e consulta da suíte do grupo.
+- [x] Testado com a **suíte híbrida real** (feature `pq-draft`, só nos testes): grupo ponta a ponta com rotação e restauração de estado, aparelho que aceita as duas suítes em dois grupos ao mesmo tempo, recusas cruzadas. Confirmado com `cargo tree` que o app **não** inclui a feature de rascunho.
+- O app continua usando só a suíte atual: nada muda para o usuário.
 
-### Etapa 3. Migração
-- [ ] Grupos novos usam a suíte pós-quântica.
-- [ ] Grupos existentes migram na próxima rotação de chaves (ou são recriados).
-- [ ] Testes de interoperabilidade entre versões do app.
+### Etapa 3. Migração (bloqueada pelo critério da Etapa 1)
+Quando o padrão estabilizar, falta:
+- [ ] Servidor: guardar o pool de KeyPackages **por suíte** (coluna/nó `suite`; `claimKeyPackage` e `claim_key_package` passam a pedir a suíte) e o de último recurso por suíte.
+- [ ] App: publicar um pool por suíte aceita; escolher a suíte do grupo como a melhor que **todos** os convidados aceitam.
+- [ ] Grupos existentes: migrar **recriando** o grupo com a suíte nova (MLS não troca a suíte de um grupo existente) e avisando os membros; manter o histórico local.
+- [ ] Testes de interoperabilidade entre versões do app (cliente antigo só com a suíte atual × novo).
 - [ ] Atualizar `SEGURANCA.md` (R9 → concluído).
