@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/data/models/chat_message_model.dart';
+import 'package:myapp/domain/entities/chat_message.dart';
 import 'package:myapp/presentation/chat/widgets/message_bubble_widget.dart';
 
 void main() {

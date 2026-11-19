@@ -29,7 +29,7 @@ class _LoginViewState extends State<LoginView> {
 
     final authViewModel = context.read<AuthViewModel>();
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
 
     await authViewModel.signIn(email, password);
   }
@@ -38,26 +38,22 @@ class _LoginViewState extends State<LoginView> {
     final email = value?.trim() ?? '';
 
     if (email.isEmpty) {
-      return 'Enter your email.';
+      return 'Informe seu e-mail.';
     }
 
     final emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
     if (!emailPattern.hasMatch(email)) {
-      return 'Enter a valid email.';
+      return 'Informe um e-mail válido.';
     }
 
     return null;
   }
 
   String? _validatePassword(String? value) {
-    final password = value?.trim() ?? '';
+    final password = value ?? '';
 
     if (password.isEmpty) {
-      return 'Enter your password.';
-    }
-
-    if (password.length < 6) {
-      return 'Password must have at least 6 characters.';
+      return 'Informe sua senha.';
     }
 
     return null;
@@ -68,7 +64,7 @@ class _LoginViewState extends State<LoginView> {
     final authViewModel = context.watch<AuthViewModel>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Flugo Chat Login'), centerTitle: true),
+      appBar: AppBar(title: const Text('Entrar'), centerTitle: true),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -85,7 +81,7 @@ class _LoginViewState extends State<LoginView> {
                     TextFormField(
                       controller: _emailController,
                       decoration: const InputDecoration(
-                        labelText: 'Email',
+                        labelText: 'E-mail',
                         border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.emailAddress,
@@ -97,7 +93,7 @@ class _LoginViewState extends State<LoginView> {
                     TextFormField(
                       controller: _passwordController,
                       decoration: const InputDecoration(
-                        labelText: 'Password',
+                        labelText: 'Senha',
                         border: OutlineInputBorder(),
                       ),
                       obscureText: true,
@@ -115,7 +111,7 @@ class _LoginViewState extends State<LoginView> {
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        child: const Text('Sign In'),
+                        child: const Text('Entrar'),
                       ),
                       const SizedBox(height: 12),
                       TextButton(
@@ -123,7 +119,7 @@ class _LoginViewState extends State<LoginView> {
                           authViewModel.clearError();
                           context.push('/register');
                         },
-                        child: const Text('Create New Account'),
+                        child: const Text('Criar conta'),
                       ),
                     ],
                     if (authViewModel.errorMessage.isNotEmpty)
