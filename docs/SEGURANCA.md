@@ -57,7 +57,7 @@ para o agente `security-reviewer` (`harness/agents/security-reviewer.md`) e deve
 | R4 | Média | Qualquer usuário verificado pode consumir todos os KeyPackages de outro (negação de serviço conhecida do MLS). | **Aberto.** Mitigar com KeyPackage de último recurso e limite por Cloud Function. |
 | R5 | Média | Limite de buscas por nickname só no app. | **Aberto.** Mover a busca para Cloud Function/função SQL com limite por usuário. |
 | R6 | Baixa | A metade do backup no servidor não tem limite de tentativas próprio (depende da senha da conta e do App Check). | **Aberto.** Entregar via função com contador. |
-| R7 | Baixa | Quem fica mais de 30 dias offline perde commits apagados pela retenção e o grupo trava. | **Aberto.** Detectar a lacuna e acionar a reentrada automaticamente. |
+| R7 | Baixa | Quem fica mais de 30 dias offline perde commits apagados pela retenção e o grupo trava. | **Corrigido**: lacuna de commits detectada e o aparelho pede reentrada sozinho; commits ficam 180 dias no servidor (mensagens, 30). |
 | R8 | Info | Mensagens antigas da sala global em texto puro (`/messages`) continuam no banco. | **Owner**: apagar o nó `/messages`. |
 | R9 | Info | Ciphersuite pós-quântica ainda é rascunho no OpenMLS. | Reavaliar antes do lançamento. |
 
