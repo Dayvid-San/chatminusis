@@ -91,3 +91,11 @@ test('reports are write-only and signed by the reporter', async () => {
   await assertFails(set(push(ref(db, 'reports')), report('alice', 'alice')));
   await assertFails(get(ref(db, 'reports')));
 });
+
+test('push tokens are private to their owner', async () => {
+  const tok = { token: 'abc:123', platform: 'android', updatedAt: serverTimestamp() };
+  await assertSucceeds(set(ref(t.user('alice'), 'pushTokens/alice/dev1'), tok));
+  await assertFails(set(ref(t.user('bob'), 'pushTokens/alice/dev2'), tok));
+  await assertFails(get(ref(t.user('bob'), 'pushTokens/alice')));
+  await assertFails(set(ref(t.user('alice'), 'pushTokens/alice/dev3'), { ...tok, platform: 'web' }));
+});

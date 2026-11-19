@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/security/app_lock.dart';
 import '../../domain/repositories/conversation_backend.dart';
 import '../../domain/repositories/profile_repository.dart';
+import '../../domain/repositories/push_registry.dart';
 import '../../domain/repositories/secure_store.dart';
 import '../../domain/services/messaging_service.dart';
 import '../auth/view_models/auth_view_model.dart';
@@ -45,6 +48,7 @@ class _SessionScopeState extends State<SessionScope> {
       final messaging = MessagingService(backend: context.read<ConversationBackend>(), store: store, uid: widget.uid);
       await messaging.start();
       _compromised = await deviceLooksCompromised();
+      if (mounted) unawaited(context.read<PushRegistry>().register(widget.uid));
       if (!mounted) {
         await messaging.dispose();
         return;
@@ -82,6 +86,7 @@ class _SessionScopeState extends State<SessionScope> {
     );
     if (ok != true || !context.mounted) return;
     final auth = context.read<AuthViewModel>();
+    await context.read<PushRegistry>().unregister(widget.uid);
     final messaging = _messaging;
     _messaging = null;
     await messaging?.wipe();

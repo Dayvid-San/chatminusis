@@ -19,6 +19,7 @@ checks:                          # rodar antes de todo merge em develop
   - cargo build --manifest-path packages/chat_crypto_ffi/rust/Cargo.toml   # testes usam a lib Rust real via FFI
   - flutter test
   - (cd firebase && npm ci && npm test)   # regras do banco no emulador (Java 11+)
+  - (cd functions && npm ci && npm test)  # lógica das Cloud Functions
 
 checks_crypto:                   # obrigatório se tocar rust/ ou packages/chat_crypto_ffi/
   - cargo test --manifest-path rust/chat_crypto/Cargo.toml
