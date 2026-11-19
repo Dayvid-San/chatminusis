@@ -145,6 +145,18 @@ select t_count('select * from mls_messages where conversation_id = ''g_012345678
 delete from welcomes;
 select t_count('select * from welcomes', 0);
 
+\echo rejoin
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+insert into rejoin_requests (conversation_id, user_id) values (:'DIRECT', :'A');
+select t_fail(format($$insert into rejoin_requests (conversation_id, user_id) values (%L, %L)$$, :'DIRECT', :'B'));
+select set_config('request.jwt.claims', json_build_object('sub', :'E')::text, false);
+select t_fail(format($$insert into rejoin_requests (conversation_id, user_id) values (%L, %L)$$, :'DIRECT', :'E'));
+select t_count('select * from rejoin_requests', 0);
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select t_count('select * from rejoin_requests', 1);
+delete from rejoin_requests where conversation_id = :'DIRECT';
+select t_count('select * from rejoin_requests', 0);
+
 \echo push and backup
 insert into push_tokens (user_id, device_id, token, platform) values (:'B', 'd1', 'tok', 'android');
 insert into backups (user_id, blob, size) values (:'B', 'Q01CSw==', 4);

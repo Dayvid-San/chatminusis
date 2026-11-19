@@ -200,6 +200,24 @@ class MemoryConversationBackend implements ConversationBackend {
     return ctl.stream;
   }
 
+  final Map<String, Set<String>> rejoin = {};
+
+  @override
+  Future<void> requestRejoin(String conversationId, String uid) async {
+    if (!(conversations[conversationId]?.members.containsKey(uid) ?? false)) throw StateError('permission-denied');
+    (rejoin[conversationId] ??= {}).add(uid);
+    _changeCtl.add(null);
+  }
+
+  @override
+  Stream<Set<String>> watchRejoinRequests(String conversationId) => _replay(() => {...?rejoin[conversationId]});
+
+  @override
+  Future<void> clearRejoin(String conversationId, String uid) async {
+    rejoin[conversationId]?.remove(uid);
+    _changeCtl.add(null);
+  }
+
   @override
   Future<void> deleteWelcome(String uid, String welcomeId) async =>
       welcomes[uid]?.removeWhere((w) => w.id == welcomeId);

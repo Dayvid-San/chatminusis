@@ -170,6 +170,7 @@ class FirebaseConversationBackend implements ConversationBackend {
     if (v is! Map) return null;
     final members = <String, MemberRole>{};
     (v['members'] as Map? ?? const {}).forEach((k, r) => members[k as String] = MemberRole.values.byName(r as String));
+    // 'rejoin' requests live under the conversation too but are not part of the record.
     return ConversationRecord(
       id: id,
       type: ConversationType.values.byName(v['type'] as String),
@@ -219,6 +220,21 @@ class FirebaseConversationBackend implements ConversationBackend {
       payload: _unb64(v['payload']),
     );
   });
+
+  @override
+  Future<void> requestRejoin(String conversationId, String uid) =>
+      _root.child('conversations/$conversationId/rejoin/$uid').set(true);
+
+  @override
+  Stream<Set<String>> watchRejoinRequests(String conversationId) =>
+      _root.child('conversations/$conversationId/rejoin').onValue.map((e) {
+        final v = e.snapshot.value;
+        return v is Map ? v.keys.cast<String>().toSet() : <String>{};
+      });
+
+  @override
+  Future<void> clearRejoin(String conversationId, String uid) =>
+      _root.child('conversations/$conversationId/rejoin/$uid').remove();
 
   @override
   Future<void> deleteWelcome(String uid, String welcomeId) => _root.child('welcomes/$uid/$welcomeId').remove();

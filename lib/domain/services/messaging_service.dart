@@ -61,6 +61,7 @@ class MessagingService {
     required SecureStore store,
     required this.uid,
     DateTime Function()? clock,
+    this.rejoinDelay = const Duration(seconds: 10),
   }) : _backend = backend,
        _store = store,
        _now = clock ?? DateTime.now;
@@ -70,6 +71,9 @@ class MessagingService {
   final String uid;
   final DateTime Function() _now;
 
+  /// How long to wait for a Welcome before asking to be re-invited.
+  final Duration rejoinDelay;
+
   late ChatCryptoClient _engine;
   late Uint8List _stateKey;
   final Map<String, _Conv> _convs = {};
@@ -77,6 +81,8 @@ class MessagingService {
   final Map<String, List<Envelope>> _buffer = {};
   final Map<String, StreamSubscription<Envelope>> _envelopeSubs = {};
   final Map<String, StreamSubscription<ConversationRecord?>> _recordSubs = {};
+  final Map<String, StreamSubscription<Set<String>>> _rejoinSubs = {};
+  final Map<String, Timer> _rejoinTimers = {};
   final List<StreamSubscription<Object?>> _subs = [];
   final _changes = StreamController<void>.broadcast();
   final _lock = _Mutex();
@@ -157,12 +163,16 @@ class MessagingService {
 
   Future<void> dispose() async {
     _purgeTimer?.cancel();
-    for (final s in [..._subs, ..._envelopeSubs.values, ..._recordSubs.values]) {
+    for (final t in _rejoinTimers.values) {
+      t.cancel();
+    }
+    for (final s in [..._subs, ..._envelopeSubs.values, ..._recordSubs.values, ..._rejoinSubs.values]) {
       await s.cancel();
     }
     _subs.clear();
     _envelopeSubs.clear();
     _recordSubs.clear();
+    _rejoinSubs.clear();
     await _changes.close();
   }
 
@@ -360,14 +370,80 @@ class MessagingService {
     _recordSubs[id] ??= _backend
         .watchConversation(id)
         .listen((r) => _lock.run(() => _onRecord(id, r)), onError: (_) => _lock.run(() => _onRecord(id, null)));
-    if (_engine.hasGroup(groupId: _gid(id))) _watchEnvelopes(id);
+    if (_engine.hasGroup(groupId: _gid(id))) {
+      _watchEnvelopes(id);
+    } else {
+      // Member on the server but without keys (e.g. new phone without backup):
+      // if no Welcome shows up, ask the others to re-invite this device.
+      _rejoinTimers[id] ??= Timer(rejoinDelay, () {
+        _rejoinTimers.remove(id);
+        final c = _convs[id];
+        if (c != null && !c.removed && !_engine.hasGroup(groupId: _gid(id))) {
+          unawaited(_backend.requestRejoin(id, uid).catchError((Object _) {}));
+        }
+      });
+    }
   }
 
   void _watchEnvelopes(String id) {
+    _rejoinTimers.remove(id)?.cancel();
     _envelopeSubs[id] ??= _backend.watchEnvelopes(id).listen((e) {
       (_buffer[id] ??= []).add(e);
       _lock.run(() => _drain(id));
     });
+    _rejoinSubs[id] ??= _backend.watchRejoinRequests(id).listen((uids) {
+      for (final other in uids.where((u) => u != uid)) {
+        unawaited(_repair(id, other));
+      }
+    });
+  }
+
+  final Set<String> _repairing = {};
+
+  /// Re-invites [other], who lost their keys: removes their stale leaf (if
+  /// any) and adds their new device from a fresh KeyPackage. Direct chats:
+  /// either member may do it; groups: admins only.
+  Future<void> _repair(String id, String other) async {
+    final key = '$id/$other';
+    if (!_repairing.add(key)) return;
+    try {
+      final c = _convs[id];
+      final record = c?.record ?? await _backend.getConversation(id);
+      if (c == null || record == null || !record.members.containsKey(other)) return;
+      if (c.type == ConversationType.group && !record.isAdmin(uid)) return;
+      final gid = _gid(id);
+      final published = await _backend.fetchIdentity(other);
+      final current = _engine.memberKeys(groupId: gid).where((m) => utf8.decode(m.identity) == other).toList();
+      if (published != null && current.any((m) => _bytesEqual(m.signatureKey, published))) {
+        await _backend.clearRejoin(id, other); // someone already repaired it
+        return;
+      }
+      if (current.isNotEmpty) {
+        await _withCommitRetry(id, () async {
+          if (!_engine.members(groupId: gid).any((m) => utf8.decode(m) == other)) return;
+          final out = await _engine.removeMembers(groupId: gid, identities: [utf8.encode(other)]);
+          await _publishCommit(id, out);
+        });
+      }
+      final kp = await _backend.claimKeyPackage(other);
+      if (kp == null) return; // they have not published keys yet; request stays open
+      await _withCommitRetry(id, () async {
+        final out = await _engine.addMembers(groupId: gid, keyPackages: [kp]);
+        await _publishCommit(
+          id,
+          out,
+          welcomes: [WelcomeOut(recipientUid: other, payload: out.welcome!)],
+        );
+      });
+      await _backend.clearRejoin(id, other);
+      final title = c.title;
+      if (title != null) await _sendPayload(id, {'t': 'meta', 'title': title});
+      _emit();
+    } catch (_) {
+      // Lost a race or offline: the request stays and is retried on the next change.
+    } finally {
+      _repairing.remove(key);
+    }
   }
 
   Future<void> _onRecord(String id, ConversationRecord? record) async {
@@ -377,6 +453,8 @@ class MessagingService {
       // We were removed (or left): forget the keys, keep the local history.
       await _envelopeSubs.remove(id)?.cancel();
       await _recordSubs.remove(id)?.cancel();
+      await _rejoinSubs.remove(id)?.cancel();
+      _rejoinTimers.remove(id)?.cancel();
       if (_engine.hasGroup(groupId: _gid(id))) {
         await _engine.deleteGroup(groupId: _gid(id));
         await _persistEngine();

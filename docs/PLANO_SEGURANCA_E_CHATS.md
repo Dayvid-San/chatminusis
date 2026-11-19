@@ -1,5 +1,7 @@
 # Plano: Chats privados com criptografia ponta a ponta
 
+> **Status (19/11/2026): Etapas 0–12 implementadas** e integradas em `develop`. Pendências do Owner e riscos abertos: [`SEGURANCA.md`](SEGURANCA.md), seção 5.
+>
 > Documento vivo. Cada etapa deve ser concluída, revisada e testada antes da próxima, e integrada em `develop` (ver `harness/rules/git-workflow.md`).
 > Status: `[ ]` pendente · `[~]` em andamento · `[x]` concluída
 
@@ -213,14 +215,16 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - Migração: contas do Supabase têm ids diferentes, então conversas e backups do Firebase não migram (ver `supabase/README.md`).
 - Auto-hospedagem do Supabase fica como opção para reduzir metadados com terceiros.
 
-### Etapa 12. Auditoria contínua `[ ]`
-- [ ] Revisão do `security-reviewer` em toda etapa sensível.
-- [ ] Testes de regras/RLS no CI; auditoria de dependências e licenças.
-- [ ] Pentest externo antes de divulgar o app como seguro.
+### Etapa 12. Auditoria contínua `[x]`
+- [x] CI (`.github/workflows/ci.yml`): Rust (testes, clippy, fmt, `cargo deny`), Flutter (analyze, testes do app e da ponte), regras Firebase no emulador, Cloud Functions, RLS Supabase no PostgreSQL.
+- [x] Revisão de segurança completa: [`SEGURANCA.md`](SEGURANCA.md). Achado R1 (reinstalar sem backup travava conversas) corrigido com pedidos de reentrada; R2 corrigido na Etapa 10; R3–R9 registrados com plano.
+- [ ] Pentest/auditoria externa antes de divulgar o app como seguro (Owner).
 
 ---
 
 ## 6. Pendências do Owner
+
+Padrões adotados enquanto não há decisão: Supabase como opção de build (Firebase segue padrão), backup no nosso backend, grupos de até 256 membros.
 
 1. **Licença:** PolyForm Strict (sem modificações) ou PolyForm Noncommercial (permite modificar para uso não comercial)? Repositório público (aceitando o botão de fork do GitHub) ou privado?
 2. **Supabase:** migrar já, antes da Etapa 4 (evita refazer regras de conversas/grupos), ou só na Etapa 11?

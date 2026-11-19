@@ -240,6 +240,21 @@ class SupabaseConversationBackend implements ConversationBackend {
   );
 
   @override
+  Future<void> requestRejoin(String conversationId, String uid) =>
+      _client.from('rejoin_requests').upsert({'conversation_id': conversationId, 'user_id': uid});
+
+  @override
+  Stream<Set<String>> watchRejoinRequests(String conversationId) => _client
+      .from('rejoin_requests')
+      .stream(primaryKey: ['conversation_id', 'user_id'])
+      .eq('conversation_id', conversationId)
+      .map((rows) => rows.map((r) => r['user_id'] as String).toSet());
+
+  @override
+  Future<void> clearRejoin(String conversationId, String uid) =>
+      _client.from('rejoin_requests').delete().eq('conversation_id', conversationId).eq('user_id', uid);
+
+  @override
   Future<void> deleteWelcome(String uid, String welcomeId) =>
       _client.from('welcomes').delete().eq('id', int.parse(welcomeId));
 }
