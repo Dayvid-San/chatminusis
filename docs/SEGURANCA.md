@@ -61,6 +61,8 @@ para o agente `security-reviewer` (`harness/agents/security-reviewer.md`) e deve
 | R8 | Info | Mensagens antigas da sala global em texto puro (`/messages`) continuam no banco. | **Owner**: apagar o nó `/messages`. |
 | R9 | Info | Ciphersuite pós-quântica ainda é rascunho no OpenMLS. | Reavaliar antes do lançamento. |
 
+> Plano de tratamento dos achados abertos, dividido em etapas: [`TAREFAS_RISCOS.md`](TAREFAS_RISCOS.md).
+
 ## 5. Antes de lançar: checklist do Owner
 
 - [ ] Rodar o app em Android e iOS reais (`flutter run`) e o teste de integração do pacote (`packages/chat_crypto_ffi/example`).
