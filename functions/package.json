@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test test/lib.test.js",
-    "test:emulator": "cd .. && firebase/node_modules/.bin/firebase emulators:exec --only database --project demo-functions \"node --test functions/test/*.emulator.test.js\"",
+    "test:emulator": "cd .. && firebase/node_modules/.bin/firebase emulators:exec --only database --project demo-functions \"node --test --test-concurrency=1 functions/test/*.emulator.test.js\"",
     "test:all": "npm test && npm run test:emulator"
   },
   "dependencies": {
