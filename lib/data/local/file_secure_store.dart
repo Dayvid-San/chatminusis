@@ -61,6 +61,20 @@ class FileSecureStore implements SecureStore {
   }
 
   @override
+  Future<List<String>> names() async {
+    if (!await _dir.exists()) return [];
+    final out = <String>[];
+    await for (final f in _dir.list()) {
+      final base = f.uri.pathSegments.last;
+      if (base.endsWith('.tmp')) continue;
+      try {
+        out.add(utf8.decode(base64Url.decode(base)));
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  @override
   Future<void> wipe() async {
     if (await _dir.exists()) await _dir.delete(recursive: true);
     await _keychain.delete(key: _keyName);

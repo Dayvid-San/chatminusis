@@ -17,6 +17,10 @@ abstract class ConversationBackend {
   Future<void> publishKeyPackages(String uid, List<Uint8List> keyPackages);
   Future<int> countKeyPackages(String uid);
 
+  /// Deletes all of [uid]'s published KeyPackages (after restoring a backup,
+  /// their private parts may be missing).
+  Future<void> clearKeyPackages(String uid);
+
   /// Atomically takes (and deletes) one KeyPackage of [uid]; null if none left.
   Future<Uint8List?> claimKeyPackage(String uid);
 

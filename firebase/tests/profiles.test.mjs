@@ -99,3 +99,16 @@ test('push tokens are private to their owner', async () => {
   await assertFails(get(ref(t.user('bob'), 'pushTokens/alice')));
   await assertFails(set(ref(t.user('alice'), 'pushTokens/alice/dev3'), { ...tok, platform: 'web' }));
 });
+
+test('backup and server share are readable and writable only by the verified owner', async () => {
+  const share = { share: 'A'.repeat(43) + '=', createdAt: serverTimestamp() };
+  const backup = { blob: 'Q01CSw==', meta: { createdAt: serverTimestamp(), size: 4 } };
+  await assertSucceeds(set(ref(t.user('alice'), 'backupShares/alice'), share));
+  await assertSucceeds(set(ref(t.user('alice'), 'backups/alice'), backup));
+  await assertSucceeds(get(ref(t.user('alice'), 'backupShares/alice')));
+  await assertFails(get(ref(t.user('bob'), 'backupShares/alice')));
+  await assertFails(get(ref(t.user('bob'), 'backups/alice')));
+  await assertFails(set(ref(t.user('bob'), 'backups/alice'), backup));
+  await assertFails(get(ref(t.user('alice', false), 'backupShares/alice')));
+  await assertFails(set(ref(t.user('alice'), 'backupShares/alice'), { share: 'curto', createdAt: serverTimestamp() }));
+});
