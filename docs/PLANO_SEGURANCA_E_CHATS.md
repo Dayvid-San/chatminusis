@@ -118,9 +118,13 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 
 ## 5. Etapas
 
-### Etapa 0. Prova de conceito e licença `[ ]`
-- [ ] Integrar OpenMLS com `flutter_rust_bridge` em Android e iOS; criar um grupo de 2 e de 3 membros e trocar mensagens entre clientes simulados.
-- [ ] Confirmar licenças de todas as dependências (sem GPL/AGPL).
+### Etapa 0. Prova de conceito e licença `[~]`
+> Resultados em [`ETAPA_0_RELATORIO.md`](ETAPA_0_RELATORIO.md).
+- [x] Núcleo OpenMLS (`rust/chat_crypto`): grupos de 2 e 3, remoção, 15 testes de segurança passando.
+- [x] Ponte `flutter_rust_bridge` (`packages/chat_crypto_ffi`) testada pela FFI no computador.
+- [x] Núcleo compila para Android (arm64, armv7, x86_64) e iOS (arm64, simulador).
+- [x] Licenças auditadas: nenhuma GPL/AGPL; `hpke-rs` em MPL-2.0 (exceção pendente de aceite).
+- [ ] Rodar o teste de integração em aparelho Android e iOS (precisa de NDK/Xcode, máquina do Owner).
 - [ ] Owner escolhe a licença (seção 3.3) e adicionamos o `LICENSE`.
 - **Pronto quando:** PoC funciona nas duas plataformas e a licença está definida.
 
