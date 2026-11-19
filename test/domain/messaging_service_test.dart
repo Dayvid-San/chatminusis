@@ -9,8 +9,10 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/domain/entities/conversation.dart';
 import 'package:myapp/domain/repositories/conversation_backend.dart';
+import 'package:myapp/domain/services/backup_service.dart';
 import 'package:myapp/domain/services/messaging_service.dart';
 
+import '../fakes/memory_backup_backend.dart';
 import '../fakes/memory_conversation_backend.dart';
 import '../fakes/memory_secure_store.dart';
 
@@ -454,6 +456,124 @@ void main() {
       await user('alice', store: store);
       expect(server.keyPackages['alice']!.map(base64Encode).toSet().intersection(firstPool), isEmpty);
       expect(server.keyPackages['alice'], hasLength(20));
+    });
+  });
+
+  group('malicious ordinary member (R3)', () {
+    Future<(MessagingService, MessagingService, MessagingService, String)> team() async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final mallory = await user('mallory');
+      final id = await alice.createGroup('Equipe', ['bob', 'mallory']);
+      await eventually(
+        () => bob.conversation(id)?.pendingWelcome == false && mallory.conversation(id)?.pendingWelcome == false,
+        reason: 'everyone joined',
+      );
+      await eventually(() => bob.conversation(id)?.title == 'Equipe');
+      return (alice, bob, mallory, id);
+    }
+
+    List<String> membersOf(MessagingService s, String id) => s.conversation(id)!.memberUids.toList()..sort();
+
+    test('the server refuses a commit from an ordinary member', () async {
+      final (alice, bob, mallory, id) = await team();
+      final out = await mallory.engine.removeMembers(groupId: utf8.encode(id), identities: [utf8.encode('bob')]);
+      final evil = Envelope(
+        id: server.newEnvelopeId(id),
+        conversationId: id,
+        sender: 'mallory',
+        epoch: out.newEpoch.toInt(),
+        kind: EnvelopeKind.commit,
+        payload: out.commit,
+      );
+      await expectLater(server.publishCommit(commit: evil), throwsA(isA<StateError>()));
+      expect(server.conversations[id]!.epoch, 1, reason: 'epoch untouched');
+      expect(server.conversations[id]!.members.keys.toSet(), {'alice', 'bob', 'mallory'});
+      expect(membersOf(alice, id), ['alice', 'bob', 'mallory']);
+      expect(membersOf(bob, id), ['alice', 'bob', 'mallory']);
+    });
+
+    test('a commit hidden in a message or proposal envelope is refused by every honest client', () async {
+      final (alice, bob, mallory, id) = await team();
+      final out = await mallory.engine.removeMembers(groupId: utf8.encode(id), identities: [utf8.encode('bob')]);
+      final epoch = server.conversations[id]!.epoch;
+      for (final kind in [EnvelopeKind.application, EnvelopeKind.proposal]) {
+        final disguised = Envelope(
+          id: server.newEnvelopeId(id),
+          conversationId: id,
+          sender: 'mallory',
+          epoch: epoch,
+          kind: kind,
+          payload: out.commit,
+        );
+        // The server only sees the label, so it accepts these...
+        kind == EnvelopeKind.application
+            ? await server.publishApplication(disguised, notifyUids: const [])
+            : await server.publishProposal(disguised);
+      }
+      // ...but the receivers check the content and apply nothing.
+      await eventually(
+        () => texts(alice, id).where((t) => t.contains('não pôde ser decifrada') || t.contains('inválida')).length >= 2,
+        reason: 'alice noticed both attempts',
+      );
+      expect(alice.engine.epoch(groupId: utf8.encode(id)).toInt(), epoch);
+      expect(membersOf(alice, id), ['alice', 'bob', 'mallory']);
+      expect(membersOf(bob, id), ['alice', 'bob', 'mallory']);
+
+      // The group still works for everybody.
+      await alice.send(id, 'seguimos juntos');
+      await eventually(() => texts(bob, id).contains('seguimos juntos'));
+      await bob.send(id, 'ok');
+      await eventually(() => texts(alice, id).contains('ok'));
+    });
+
+    test('an ordinary member rotates keys through a proposal that an admin commits', () async {
+      final (alice, bob, _, id) = await team();
+      final before = alice.engine.epoch(groupId: utf8.encode(id)).toInt();
+      await bob.rotateKeys(id); // bob cannot commit: he sends a proposal
+      expect(server.envelopes[id]!.any((e) => e.kind == EnvelopeKind.proposal && e.sender == 'bob'), isTrue);
+      await eventually(
+        () => alice.engine.epoch(groupId: utf8.encode(id)).toInt() > before,
+        reason: 'the admin committed bob\'s proposal',
+      );
+      await eventually(
+        () => bob.engine.epoch(groupId: utf8.encode(id)) == alice.engine.epoch(groupId: utf8.encode(id)),
+        reason: 'bob followed',
+      );
+      expect(server.envelopes[id]!.where((e) => e.kind == EnvelopeKind.commit && e.sender == 'bob'), isEmpty);
+      expect(alice.engine.hasPendingProposals(groupId: utf8.encode(id)), isFalse, reason: 'consumed');
+
+      await bob.send(id, 'chaves novas');
+      await eventually(() => texts(alice, id).contains('chaves novas'));
+    });
+
+    test('a restored ordinary member rejoins through an admin instead of committing', () async {
+      final alice = await user('alice');
+      final bobStore = MemorySecureStore();
+      var bob = await user('bob', store: bobStore);
+      final id = await alice.createGroup('Equipe', ['bob']);
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false && bob.conversation(id)?.title == 'Equipe');
+      await alice.send(id, 'antes do backup');
+      await eventually(() => texts(bob, id).contains('antes do backup'));
+
+      final backups = MemoryBackupBackend();
+      final code = await BackupService(backend: backups, store: bobStore, uid: 'bob').enable(bob);
+      await bob.dispose();
+      services.remove(bob);
+
+      final newStore = MemorySecureStore();
+      await BackupService(backend: backups, store: newStore, uid: 'bob').restore(code);
+      bob = await user('bob', store: newStore);
+
+      await eventually(() => texts(bob, id).any((t) => t.contains('Backup restaurado')), reason: 'notice shown');
+      await eventually(
+        () => bob.conversation(id)?.pendingWelcome == false && bob.engine.hasGroup(groupId: utf8.encode(id)),
+        reason: 'alice re-invited bob',
+      );
+      expect(server.envelopes[id]!.where((e) => e.kind == EnvelopeKind.commit && e.sender == 'bob'), isEmpty);
+      expect(texts(bob, id), contains('antes do backup'), reason: 'history restored from the backup');
+      await bob.send(id, 'voltei');
+      await eventually(() => texts(alice, id).contains('voltei'));
     });
   });
 }

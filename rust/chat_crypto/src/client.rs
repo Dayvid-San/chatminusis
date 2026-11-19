@@ -56,6 +56,21 @@ pub struct MemberInfo {
     pub signature_key: Vec<u8>,
 }
 
+/// What the envelope that carried a message claims to hold. The server only
+/// sees this label, so a malicious member could hide a commit inside an
+/// ordinary message envelope; the content must match the label or it is refused
+/// *before* anything is applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Expected {
+    /// A chat message.
+    Application,
+    /// A commit. Only admins may publish these (the server enforces it).
+    Commit,
+    /// A proposal. Any member may publish these, so they must be *only*
+    /// proposals: a commit hidden in a proposal envelope is refused.
+    Proposal,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Incoming {
     /// A decrypted chat message.
@@ -63,8 +78,10 @@ pub enum Incoming {
     /// A membership/key change that was applied. `still_member` is false when
     /// this client was removed.
     Commit { still_member: bool },
-    /// A proposal stored for a later commit.
+    /// An `Update` proposal that was stored; an admin will commit it.
     Proposal,
+    /// A proposal that is not allowed (anything but a member's own update). Dropped.
+    Ignored,
     /// This client's own message echoed back by the server.
     Own,
 }
@@ -453,7 +470,17 @@ impl Client {
 
     /// Processes a group message from the server: decrypts chat messages and
     /// applies Commits (membership and key changes).
-    pub fn process(&mut self, group_id: &[u8], message: Vec<u8>) -> Result<Incoming> {
+    ///
+    /// `expected` is what the envelope claims to hold; content of another kind
+    /// (even a commit inside a proposal envelope) is an error and is **not applied**. Proposals other than a member's own
+    /// `Update` are dropped (members never propose adds or removes: admins
+    /// commit those directly).
+    pub fn process(
+        &mut self,
+        group_id: &[u8],
+        message: Vec<u8>,
+        expected: Expected,
+    ) -> Result<Incoming> {
         let provider = &self.provider;
         let group = self
             .groups
@@ -465,7 +492,23 @@ impl Client {
             .map_err(|_| CryptoError::InvalidInput("not a group message".into()))?;
         let processed = group.process_message(provider, protocol).map_err(mls)?;
         let sender = member_identity(processed.credential()).unwrap_or_default();
-        match processed.into_content() {
+        let content = processed.into_content();
+        let actual = match &content {
+            ProcessedMessageContent::ApplicationMessage(_) => Expected::Application,
+            ProcessedMessageContent::StagedCommitMessage(_) => Expected::Commit,
+            ProcessedMessageContent::ProposalMessage(_)
+            | ProcessedMessageContent::ExternalJoinProposalMessage(_) => Expected::Proposal,
+            // Our own echo: nothing to apply, whatever the envelope says.
+            ProcessedMessageContent::OwnPendingCommit
+            | ProcessedMessageContent::OwnPrivateMessage => expected,
+        };
+        if actual != expected {
+            // Nothing has been merged or stored yet: refusing here is safe.
+            return Err(CryptoError::InvalidInput(
+                "content does not match the envelope kind".into(),
+            ));
+        }
+        match content {
             ProcessedMessageContent::ApplicationMessage(app) => Ok(Incoming::Application {
                 sender,
                 plaintext: app.into_bytes(),
@@ -481,15 +524,79 @@ impl Client {
                 })
             }
             ProcessedMessageContent::ProposalMessage(proposal) => {
-                group
-                    .store_pending_proposal(provider.storage(), *proposal)
-                    .map_err(mls)?;
-                Ok(Incoming::Proposal)
+                if matches!(proposal.proposal(), Proposal::Update(_)) {
+                    group
+                        .store_pending_proposal(provider.storage(), *proposal)
+                        .map_err(mls)?;
+                    Ok(Incoming::Proposal)
+                } else {
+                    Ok(Incoming::Ignored)
+                }
             }
-            ProcessedMessageContent::ExternalJoinProposalMessage(_) => Ok(Incoming::Proposal),
+            ProcessedMessageContent::ExternalJoinProposalMessage(_) => Ok(Incoming::Ignored),
             ProcessedMessageContent::OwnPendingCommit
             | ProcessedMessageContent::OwnPrivateMessage => Ok(Incoming::Own),
         }
+    }
+
+    /// A member (without commit rights) proposes to rotate their own keys. An
+    /// admin turns pending proposals into a commit with
+    /// [`Client::commit_pending_proposals`].
+    pub fn propose_self_update(&mut self, group_id: &[u8]) -> Result<Vec<u8>> {
+        let (provider, signer) = (&self.provider, &self.signer);
+        let group = self
+            .groups
+            .get_mut(group_id)
+            .ok_or(CryptoError::UnknownGroup)?;
+        let (proposal, _reference) = group
+            .propose_self_update(provider, signer, LeafNodeParameters::default())
+            .map_err(mls)?;
+        proposal.tls_serialize_detached().map_err(mls)
+    }
+
+    /// TEST ONLY: builds a `Remove` proposal, which a well-behaved client never
+    /// sends, to prove that receivers drop it.
+    #[cfg(feature = "testing")]
+    pub fn propose_remove_for_test(&mut self, group_id: &[u8], identity: &[u8]) -> Result<Vec<u8>> {
+        let (provider, signer) = (&self.provider, &self.signer);
+        let group = self
+            .groups
+            .get_mut(group_id)
+            .ok_or(CryptoError::UnknownGroup)?;
+        let index = group
+            .members()
+            .find(|m| member_identity(&m.credential).as_deref() == Some(identity))
+            .ok_or(CryptoError::UnknownMember)?
+            .index;
+        let (proposal, _reference) = group
+            .propose_remove_member(provider, signer, index)
+            .map_err(mls)?;
+        proposal.tls_serialize_detached().map_err(mls)
+    }
+
+    /// Whether proposals are waiting to be committed.
+    pub fn has_pending_proposals(&self, group_id: &[u8]) -> Result<bool> {
+        Ok(self.group(group_id)?.pending_proposals().next().is_some())
+    }
+
+    /// Prepares a pending commit that includes every stored proposal (admins).
+    pub fn commit_pending_proposals(&mut self, group_id: &[u8]) -> Result<CommitOutput> {
+        let (provider, signer) = (&self.provider, &self.signer);
+        let group = self
+            .groups
+            .get_mut(group_id)
+            .ok_or(CryptoError::UnknownGroup)?;
+        let (commit, welcome, _info) = group
+            .commit_to_pending_proposals(provider, signer)
+            .map_err(mls)?;
+        Ok(CommitOutput {
+            commit: commit.tls_serialize_detached().map_err(mls)?,
+            welcome: match welcome {
+                Some(w) => Some(w.tls_serialize_detached().map_err(mls)?),
+                None => None,
+            },
+            new_epoch: group.epoch().as_u64() + 1,
+        })
     }
 
     pub fn members(&self, group_id: &[u8]) -> Result<Vec<Vec<u8>>> {

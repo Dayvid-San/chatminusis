@@ -151,8 +151,12 @@ select t_fail(format($$select publish_application(%L, 1, 'm1', 'eA==')$$, :'GROU
 select t_count($$select * from mls_messages where id = 'm1' and sender = '22222222-2222-2222-2222-222222222222'$$, 1);
 
 \echo commits compare-and-set
-select publish_commit(:'GROUP', 2, 'k1', 'eA==', '{}', '[]');
+select t_fail(format($$select publish_commit(%L, 2, 'k1', 'eA==', '{}', '[]')$$, :'GROUP'), 'not_admin');   -- R3: no commits from ordinary members
+select publish_proposal(:'GROUP', 1, 'p1', 'cHJvcA==');                                                      -- ...but proposals are fine
+select t_fail(format($$select publish_proposal(%L, 0, 'p2', 'eA==')$$, :'GROUP'), 'stale_epoch');
+select t_fail(format($$insert into mls_messages (conversation_id, id, sender, epoch, kind, payload) values (%L, 'x', %L, 1, 'commit', 'eA==')$$, :'GROUP', :'B'));
 select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select publish_commit(:'GROUP', 2, 'k1', 'eA==', '{}', '[]');
 select t_fail(format($$select publish_commit(%L, 2, 'k2', 'eA==', '{}', '[]')$$, :'GROUP'), 'epoch_conflict');
 select t_fail(format($$select publish_commit(%L, 4, 'k3', 'eA==', '{}', '[]')$$, :'GROUP'), 'epoch_conflict');
 

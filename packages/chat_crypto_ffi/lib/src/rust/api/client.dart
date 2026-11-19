@@ -83,6 +83,8 @@ abstract class ChatCryptoClient implements RustOpaqueInterface {
 
   Future<void> clearPendingCommit({required List<int> groupId});
 
+  Future<CommitResult> commitPendingProposals({required List<int> groupId});
+
   static ChatCryptoClient create({required List<int> identity}) => RustLib
       .instance
       .api
@@ -114,6 +116,8 @@ abstract class ChatCryptoClient implements RustOpaqueInterface {
 
   bool hasGroup({required List<int> groupId});
 
+  bool hasPendingProposals({required List<int> groupId});
+
   Uint8List get identity;
 
   Future<Uint8List> joinGroup({required List<int> welcome});
@@ -127,7 +131,12 @@ abstract class ChatCryptoClient implements RustOpaqueInterface {
   Future<IncomingMessage> process({
     required List<int> groupId,
     required List<int> message,
+    required ExpectedContent expected,
   });
+
+  /// A member without commit rights proposes to rotate their own keys; an
+  /// admin commits it with `commit_pending_proposals`.
+  Future<Uint8List> proposeSelfUpdate({required List<int> groupId});
 
   Future<CommitResult> removeMembers({
     required List<int> groupId,
@@ -175,6 +184,18 @@ class CommitResult {
           newEpoch == other.newEpoch;
 }
 
+/// What the envelope that carried a message claims to hold. Content of
+/// another kind is refused without being applied.
+enum ExpectedContent {
+  application,
+
+  /// A commit (admins only, enforced by the server).
+  commit,
+
+  /// A proposal (any member). A commit hidden in one is refused.
+  proposal,
+}
+
 /// Kind of a processed incoming group message.
 enum IncomingKind {
   /// Decrypted chat message: `sender` and `plaintext` are set.
@@ -188,6 +209,9 @@ enum IncomingKind {
 
   /// Our own message echoed back by the server.
   own,
+
+  /// A proposal that is not allowed was dropped.
+  ignored,
 }
 
 class IncomingMessage {

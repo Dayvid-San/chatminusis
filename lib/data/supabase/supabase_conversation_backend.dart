@@ -141,6 +141,17 @@ class SupabaseConversationBackend implements ConversationBackend {
   );
 
   @override
+  Future<void> publishProposal(Envelope proposal) => _client.rpc<void>(
+    'publish_proposal',
+    params: {
+      'p_conv': proposal.conversationId,
+      'p_epoch': proposal.epoch,
+      'p_id': proposal.id,
+      'p_payload': _b64(proposal.payload),
+    },
+  );
+
+  @override
   Future<void> leaveConversation({required String uid, required String conversationId}) =>
       _client.from('conversation_members').delete().eq('conversation_id', conversationId).eq('user_id', uid);
 
@@ -236,7 +247,11 @@ class SupabaseConversationBackend implements ConversationBackend {
       conversationId: conversationId,
       sender: r['sender'] as String,
       epoch: r['epoch'] as int,
-      kind: r['kind'] == 'commit' ? EnvelopeKind.commit : EnvelopeKind.application,
+      kind: switch (r['kind']) {
+        'commit' => EnvelopeKind.commit,
+        'proposal' => EnvelopeKind.proposal,
+        _ => EnvelopeKind.application,
+      },
       payload: _unb64(r['payload']),
       timestamp: DateTime.parse(r['ts'] as String).millisecondsSinceEpoch,
     ),

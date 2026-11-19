@@ -127,7 +127,7 @@ class MemoryConversationBackend implements ConversationBackend {
     _maybeFail();
     final r = conversations[commit.conversationId];
     if (r == null || !r.members.containsKey(commit.sender)) throw StateError('permission-denied');
-    if (memberChanges.isNotEmpty && !r.isAdmin(commit.sender)) throw StateError('permission-denied');
+    if (!r.isAdmin(commit.sender)) throw StateError('permission-denied: only admins commit');
     if (r.epoch != commit.epoch - 1) throw const EpochConflictException();
     final members = Map.of(r.members);
     memberChanges.forEach((u, role) => role == null ? members.remove(u) : members[u] = role);
@@ -150,6 +150,15 @@ class MemoryConversationBackend implements ConversationBackend {
     if (r == null || !r.members.containsKey(message.sender)) throw StateError('permission-denied');
     if (r.epoch != message.epoch) throw StateError('permission-denied: stale epoch');
     _addEnvelope(message);
+  }
+
+  @override
+  Future<void> publishProposal(Envelope proposal) async {
+    _maybeFail();
+    final r = conversations[proposal.conversationId];
+    if (r == null || !r.members.containsKey(proposal.sender)) throw StateError('permission-denied');
+    if (r.epoch != proposal.epoch) throw StateError('permission-denied: stale epoch');
+    _addEnvelope(proposal);
   }
 
   @override

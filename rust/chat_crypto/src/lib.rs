@@ -13,7 +13,9 @@ pub mod client;
 pub mod safety;
 pub mod vault;
 
-pub use client::{AddMembersOutput, Client, CommitOutput, Incoming, MemberInfo, CIPHERSUITE};
+pub use client::{
+    AddMembersOutput, Client, CommitOutput, Expected, Incoming, MemberInfo, CIPHERSUITE,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CryptoError {
