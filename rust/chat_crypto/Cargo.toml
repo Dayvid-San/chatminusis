@@ -16,6 +16,12 @@ openmls_basic_credential = "0.6.0"
 openmls_traits = "0.6.0"
 tls_codec = "0.5"
 thiserror = "2"
+aes-gcm = "0.10"
+argon2 = "0.5"
+hkdf = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
+zeroize = "1"
 
 [profile.release]
 lto = true

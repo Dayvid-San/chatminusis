@@ -134,7 +134,7 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - [x] App Check ativado (Play Integrity / App Attest; provedor de debug em builds de desenvolvimento). **Owner:** ativar a aplicação (enforcement) no console do Firebase.
 - [x] Verificação de e-mail obrigatória (tela própria + regras exigem `email_verified`); senha de 10+ caracteres com letras e números; bloqueio progressivo após 3 falhas de login.
 - [x] Plataforma iOS adicionada (`com.chatminusis.app`); arquivo duplicado quebrado removido.
-- [ ] Congelar a sala global `/messages`: feito na Etapa 4, quando as conversas cifradas a substituem.
+- [x] Sala global `/messages` congelada (somente leitura) na Etapa 4 e removida do app.
 - **Pronto quando:** testes no Emulator provam que um usuário não lê dados de outro, e nenhuma tela importa `firebase_*` diretamente.
 
 ### Etapa 2. Nickname único `[x]`
@@ -150,24 +150,25 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - Limitação conhecida: um cliente modificado pode ignorar o limite do app. Para limite no servidor, mover a busca para uma Cloud Function (avaliar na Etapa 11).
 - **Pronto quando:** não há como listar usuários sem saber o nickname exato.
 
-### Etapa 4. Conversas e grupos (estrutura) `[ ]`
-- [ ] Tela "Conversas" → tela da conversa (`/chat/:conversationId`).
-- [ ] Iniciar conversa 1:1 pela busca; criar grupo, adicionar/remover membros, papéis admin/membro.
-- [ ] Regras: só membros acessam a conversa; só admins alteram membros.
-- [ ] **Não lançar para usuários reais** antes da Etapa 6 (texto ainda em claro).
+### Etapa 4. Conversas e grupos `[x]`
+- [x] Tela "Conversas" → conversa; iniciar 1:1 pela busca; criar grupo, adicionar/remover membros, renomear (só admins), sair.
+- [x] Regras: só membros leem; só admins alteram membros; conversa 1:1 não ganha membros; bloqueio impede ser incluído (27 testes no emulador).
+- [x] Sala global em texto puro congelada e removida do app.
 
-### Etapa 5. Identidade e KeyPackages MLS `[ ]`
-- [ ] No primeiro login: gerar identidade e um lote de KeyPackages; privadas no Keystore/Keychain.
-- [ ] Publicar KeyPackages e repor automaticamente quando acabarem; rotação periódica.
-- [ ] Regras: só o dono escreve suas chaves; KeyPackage consumido é removido.
+### Etapa 5. Identidade e KeyPackages MLS `[x]`
+- [x] Identidade gerada no primeiro login; estado MLS completo salvo cifrado (AES-256-GCM, chave no Keystore/Keychain).
+- [x] 20 KeyPackages publicados e repostos automaticamente; consumo atômico por transação (uso único).
+- [x] Regras: só o dono escreve identidade e KeyPackages; terceiros só consomem (apagam) um KeyPackage.
+- Limitação conhecida: alguém pode esgotar os KeyPackages de outra pessoa (ataque de negação de serviço conhecido do MLS). Mitigação futura: KeyPackage de "último recurso" e limite por Cloud Function.
 
-### Etapa 6. E2EE com MLS (1:1 e grupos) `[ ]`
-- [ ] Criar grupo MLS ao iniciar conversa; enviar Welcome aos membros.
-- [ ] Adicionar/remover membro = Commit MLS (quem sai não lê mensagens futuras).
-- [ ] Toda mensagem cifrada antes de enviar; decifrada ao receber; servidor só vê `payload` opaco.
-- [ ] Tratar mensagens fora de ordem, epochs desatualizados e falhas ("não foi possível decifrar", sem travar).
-- [ ] Testes: vetores do RFC, membro removido não decifra, chave vazada não abre histórico.
-- **Pronto quando:** inspecionando o banco, nenhuma mensagem, nome de grupo ou foto é legível.
+### Etapa 6. E2EE com MLS (1:1 e grupos) `[x]`
+- [x] Toda conversa é um grupo MLS; servidor só recebe envelopes opacos (`mlsMessages`) e Welcomes (`welcomes`).
+- [x] Commits com compare-and-set de época no servidor; o commit só é aplicado localmente depois de aceito, e perder a corrida é tratado automaticamente.
+- [x] Envelopes aplicados em ordem (época, id), com tolerância a mensagens atrasadas (3 épocas) e marcação "não foi possível decifrar".
+- [x] O remetente declarado ao servidor precisa bater com a assinatura MLS; título do grupo vai cifrado e só admins o mudam.
+- [x] Admins removem do grupo MLS quem saiu no servidor; divergência entre servidor e grupo MLS gera alerta.
+- [x] Rotação automática das próprias chaves a cada 7 dias (e manual).
+- [x] Testes: 28 no núcleo Rust, 4 na ponte e 10 de ponta a ponta no serviço Dart com a biblioteca real.
 
 ### Etapa 7. Verificação de identidade `[ ]`
 - [ ] Número de segurança / QR code por contato.

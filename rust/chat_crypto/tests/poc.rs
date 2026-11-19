@@ -2,6 +2,19 @@
 
 use chat_crypto::{Client, CryptoError, Incoming};
 
+/// Adds members and merges the commit (as the app does once the server accepts it).
+fn add(c: &mut Client, group: &[u8], kps: Vec<Vec<u8>>) -> (Vec<u8>, Vec<u8>) {
+    let out = c.add_members(group, kps).unwrap();
+    c.merge_pending_commit(group).unwrap();
+    (out.commit, out.welcome.unwrap())
+}
+
+fn remove(c: &mut Client, group: &[u8], ids: Vec<Vec<u8>>) -> Vec<u8> {
+    let out = c.remove_members(group, ids).unwrap();
+    c.merge_pending_commit(group).unwrap();
+    out.commit
+}
+
 const GROUP: &[u8] = b"conversation-1";
 
 fn client(name: &str) -> Client {
@@ -24,10 +37,8 @@ fn direct_chat() -> (Client, Client) {
     let mut alice = client("alice");
     let mut bob = client("bob");
     alice.create_group(GROUP.to_vec()).unwrap();
-    let out = alice
-        .add_members(GROUP, vec![bob.generate_key_package().unwrap()])
-        .unwrap();
-    assert_eq!(bob.join_group(out.welcome).unwrap(), GROUP);
+    let (_commit, welcome) = add(&mut alice, GROUP, vec![bob.generate_key_package().unwrap()]);
+    assert_eq!(bob.join_group(welcome).unwrap(), GROUP);
     (alice, bob)
 }
 
@@ -72,14 +83,16 @@ fn group_of_three_with_late_joiner() {
     let (mut alice, mut bob) = direct_chat();
     let mut carol = client("carol");
 
-    let out = alice
-        .add_members(GROUP, vec![carol.generate_key_package().unwrap()])
-        .unwrap();
+    let (commit, welcome) = add(
+        &mut alice,
+        GROUP,
+        vec![carol.generate_key_package().unwrap()],
+    );
     assert_eq!(
-        bob.process(GROUP, out.commit).unwrap(),
+        bob.process(GROUP, commit).unwrap(),
         Incoming::Commit { still_member: true }
     );
-    carol.join_group(out.welcome).unwrap();
+    carol.join_group(welcome).unwrap();
 
     for c in [&alice, &bob, &carol] {
         assert_eq!(c.members(GROUP).unwrap().len(), 3);
@@ -108,11 +121,13 @@ fn late_joiner_cannot_read_history() {
     );
 
     let mut carol = client("carol");
-    let out = alice
-        .add_members(GROUP, vec![carol.generate_key_package().unwrap()])
-        .unwrap();
-    bob.process(GROUP, out.commit).unwrap();
-    carol.join_group(out.welcome).unwrap();
+    let (commit, welcome) = add(
+        &mut alice,
+        GROUP,
+        vec![carol.generate_key_package().unwrap()],
+    );
+    bob.process(GROUP, commit).unwrap();
+    carol.join_group(welcome).unwrap();
 
     assert!(carol.process(GROUP, before).is_err());
 }
@@ -121,15 +136,15 @@ fn late_joiner_cannot_read_history() {
 fn removed_member_cannot_read_new_messages() {
     let (mut alice, mut bob) = direct_chat();
     let mut carol = client("carol");
-    let out = alice
-        .add_members(GROUP, vec![carol.generate_key_package().unwrap()])
-        .unwrap();
-    bob.process(GROUP, out.commit).unwrap();
-    carol.join_group(out.welcome).unwrap();
+    let (commit, welcome) = add(
+        &mut alice,
+        GROUP,
+        vec![carol.generate_key_package().unwrap()],
+    );
+    bob.process(GROUP, commit).unwrap();
+    carol.join_group(welcome).unwrap();
 
-    let commit = alice
-        .remove_members(GROUP, vec![b"carol".to_vec()])
-        .unwrap();
+    let commit = remove(&mut alice, GROUP, vec![b"carol".to_vec()]);
     assert_eq!(
         bob.process(GROUP, commit.clone()).unwrap(),
         Incoming::Commit { still_member: true }
@@ -156,17 +171,15 @@ fn removed_member_cannot_read_new_messages() {
 
 #[test]
 fn old_epoch_keys_are_deleted() {
-    // A message from an epoch that the receiver already left behind can no
-    // longer be decrypted: old keys are erased (forward secrecy).
+    // Keys of epochs older than the small retention window are erased, so a
+    // message from that far back can no longer be decrypted (forward secrecy).
     let (mut alice, mut bob) = direct_chat();
     let stale = alice.encrypt(GROUP, b"epoca antiga".to_vec()).unwrap();
-
-    let carol = client("carol");
-    let out = alice
-        .add_members(GROUP, vec![carol.generate_key_package().unwrap()])
-        .unwrap();
-    bob.process(GROUP, out.commit).unwrap();
-
+    for _ in 0..4 {
+        let out = alice.self_update(GROUP).unwrap();
+        alice.merge_pending_commit(GROUP).unwrap();
+        bob.process(GROUP, out.commit).unwrap();
+    }
     assert!(bob.process(GROUP, stale).is_err());
 }
 
@@ -215,8 +228,8 @@ fn key_package_is_single_use() {
 
     alice.create_group(b"g1".to_vec()).unwrap();
     alice.create_group(b"g2".to_vec()).unwrap();
-    let w1 = alice.add_members(b"g1", vec![kp.clone()]).unwrap().welcome;
-    let w2 = alice.add_members(b"g2", vec![kp]).unwrap().welcome;
+    let (_, w1) = add(&mut alice, b"g1", vec![kp.clone()]);
+    let (_, w2) = add(&mut alice, b"g2", vec![kp]);
 
     bob.join_group(w1).unwrap();
     assert!(
@@ -261,10 +274,136 @@ fn joining_same_group_twice_is_rejected() {
     let mut alice = client("alice");
     let mut bob = client("bob");
     alice.create_group(GROUP.to_vec()).unwrap();
-    let w = alice
-        .add_members(GROUP, vec![bob.generate_key_package().unwrap()])
-        .unwrap()
-        .welcome;
-    bob.join_group(w.clone()).unwrap();
-    assert!(bob.join_group(w).is_err());
+    let (_commit, welcome) = add(&mut alice, GROUP, vec![bob.generate_key_package().unwrap()]);
+    bob.join_group(welcome.clone()).unwrap();
+    assert!(bob.join_group(welcome).is_err());
+}
+
+#[test]
+fn state_survives_export_and_restore() {
+    let key = chat_crypto::random_bytes(32).unwrap();
+    let (mut alice, bob) = direct_chat();
+    let bob_state = bob.export_state(&key).unwrap();
+    drop(bob);
+    let mut bob = Client::restore(&bob_state, &key).unwrap();
+    assert_eq!(bob.identity(), b"bob");
+    assert_eq!(bob.group_ids(), vec![GROUP.to_vec()]);
+
+    let wire = alice
+        .encrypt(GROUP, b"depois de reiniciar".to_vec())
+        .unwrap();
+    assert_eq!(
+        bob.process(GROUP, wire).unwrap(),
+        app("alice", "depois de reiniciar")
+    );
+
+    // A key package generated before the restart can still be used to join.
+    let mut carol = client("carol");
+    let kp = carol.generate_key_package().unwrap();
+    let carol_state = carol.export_state(&key).unwrap();
+    carol = Client::restore(&carol_state, &key).unwrap();
+    let (commit, welcome) = add(&mut alice, GROUP, vec![kp]);
+    bob.process(GROUP, commit).unwrap();
+    carol.join_group(welcome).unwrap();
+    assert_eq!(carol.members(GROUP).unwrap().len(), 3);
+}
+
+#[test]
+fn state_needs_the_right_key() {
+    let key = chat_crypto::random_bytes(32).unwrap();
+    let state = client("alice").export_state(&key).unwrap();
+    assert!(Client::restore(&state, &chat_crypto::random_bytes(32).unwrap()).is_err());
+    let mut bad = state.clone();
+    bad[20] ^= 1;
+    assert!(Client::restore(&bad, &key).is_err());
+    assert!(!String::from_utf8_lossy(&state).contains("alice"));
+}
+
+#[test]
+fn concurrent_commits_converge() {
+    // Alice and Bob both commit at the same epoch; the server accepts Alice's.
+    let (mut alice, mut bob) = direct_chat();
+    let a = alice.self_update(GROUP).unwrap();
+    let _b = bob.self_update(GROUP).unwrap();
+    assert!(bob.has_pending_commit(GROUP).unwrap());
+
+    alice.merge_pending_commit(GROUP).unwrap(); // server accepted Alice
+                                                // Bob receives Alice's commit while holding his own pending one.
+    assert_eq!(
+        bob.process(GROUP, a.commit).unwrap(),
+        Incoming::Commit { still_member: true }
+    );
+    assert!(!bob.has_pending_commit(GROUP).unwrap());
+    assert_eq!(alice.epoch(GROUP).unwrap(), bob.epoch(GROUP).unwrap());
+    assert_eq!(
+        alice.epoch_authenticator(GROUP).unwrap(),
+        bob.epoch_authenticator(GROUP).unwrap()
+    );
+
+    let wire = bob.encrypt(GROUP, b"convergiu".to_vec()).unwrap();
+    assert_eq!(alice.process(GROUP, wire).unwrap(), app("bob", "convergiu"));
+}
+
+#[test]
+fn rejected_commit_can_be_cleared() {
+    let (mut alice, mut bob) = direct_chat();
+    let epoch = alice.epoch(GROUP).unwrap();
+    let out = alice.self_update(GROUP).unwrap();
+    assert_eq!(out.new_epoch, epoch + 1);
+    alice.clear_pending_commit(GROUP).unwrap();
+    assert_eq!(alice.epoch(GROUP).unwrap(), epoch);
+    let wire = alice
+        .encrypt(GROUP, b"ainda na mesma epoca".to_vec())
+        .unwrap();
+    assert_eq!(
+        bob.process(GROUP, wire).unwrap(),
+        app("alice", "ainda na mesma epoca")
+    );
+    assert!(alice.merge_pending_commit(GROUP).is_err());
+}
+
+#[test]
+fn self_update_rotates_keys() {
+    let (mut alice, mut bob) = direct_chat();
+    let before = alice.epoch_authenticator(GROUP).unwrap();
+    let out = alice.self_update(GROUP).unwrap();
+    alice.merge_pending_commit(GROUP).unwrap();
+    bob.process(GROUP, out.commit).unwrap();
+    assert_ne!(alice.epoch_authenticator(GROUP).unwrap(), before);
+    assert_eq!(
+        alice.epoch_authenticator(GROUP).unwrap(),
+        bob.epoch_authenticator(GROUP).unwrap()
+    );
+}
+
+#[test]
+fn late_message_within_past_epochs_still_decrypts() {
+    let (mut alice, mut bob) = direct_chat();
+    let late = alice.encrypt(GROUP, b"atrasada".to_vec()).unwrap();
+    let out = alice.self_update(GROUP).unwrap();
+    alice.merge_pending_commit(GROUP).unwrap();
+    bob.process(GROUP, out.commit).unwrap();
+    assert_eq!(bob.process(GROUP, late).unwrap(), app("alice", "atrasada"));
+}
+
+#[test]
+fn member_infos_and_delete_group() {
+    let (alice, mut bob) = direct_chat();
+    let infos = bob.member_infos(GROUP).unwrap();
+    assert_eq!(infos.len(), 2);
+    let a = infos.iter().find(|m| m.identity == b"alice").unwrap();
+    assert_eq!(a.signature_key, alice.signature_public_key());
+    bob.delete_group(GROUP).unwrap();
+    assert!(!bob.has_group(GROUP));
+    assert!(bob.encrypt(GROUP, b"x".to_vec()).is_err());
+}
+
+#[test]
+fn generates_many_key_packages() {
+    let kps = client("alice").generate_key_packages(5).unwrap();
+    assert_eq!(kps.len(), 5);
+    assert_eq!(
+        kps.iter().collect::<std::collections::HashSet<_>>().len(),
+        5
+    );
 }

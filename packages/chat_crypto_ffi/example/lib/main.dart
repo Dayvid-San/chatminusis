@@ -16,7 +16,8 @@ Future<String> _selfTest() async {
   final bob = ChatCryptoClient.create(identity: utf8.encode('bob'));
   await alice.createGroup(groupId: group);
   final add = await alice.addMembers(groupId: group, keyPackages: [await bob.generateKeyPackage()]);
-  await bob.joinGroup(welcome: add.welcome);
+  await alice.mergePendingCommit(groupId: group);
+  await bob.joinGroup(welcome: add.welcome!);
   final wire = await alice.encrypt(groupId: group, plaintext: utf8.encode('Olá do MLS'));
   final msg = await bob.process(groupId: group, message: wire);
   return '${utf8.decode(msg.plaintext)} (${wire.length} bytes cifrados)';

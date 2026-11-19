@@ -1,48 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/domain/entities/chat_message.dart';
+import 'package:myapp/domain/entities/conversation.dart';
 import 'package:myapp/presentation/chat/widgets/message_bubble_widget.dart';
 
+DecryptedMessage msg(String text, DateTime at, {bool outgoing = false, int? expiresAt}) => DecryptedMessage(
+  id: '1',
+  conversationId: 'c',
+  senderUid: outgoing ? 'me' : 'bob',
+  text: text,
+  timestamp: at.millisecondsSinceEpoch,
+  outgoing: outgoing,
+  expiresAt: expiresAt,
+);
+
+Future<void> pump(WidgetTester tester, Widget w) => tester.pumpWidget(MaterialApp(home: Scaffold(body: w)));
+
 void main() {
-  testWidgets('Message bubble renders current user message details', (WidgetTester tester) async {
-    final message = ChatMessage(
-      id: '1',
-      senderId: 'user-1',
-      senderName: 'alice',
-      text: 'Hello world',
-      timestamp: DateTime(2026, 3, 9, 14, 30).millisecondsSinceEpoch,
+  testWidgets('own message shows "Você" and the time', (tester) async {
+    await pump(
+      tester,
+      MessageBubbleWidget(message: msg('Olá', DateTime(2026, 3, 9, 14, 30), outgoing: true), isMe: true),
     );
-
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: MessageBubbleWidget(message: message, isMe: true)),
-      ),
-    );
-
-    expect(find.text('You'), findsOneWidget);
-    expect(find.text('Hello world'), findsOneWidget);
+    expect(find.text('Você'), findsOneWidget);
+    expect(find.text('Olá'), findsOneWidget);
     expect(find.text('14:30'), findsOneWidget);
   });
 
-  testWidgets('Message bubble renders sender name for other users', (WidgetTester tester) async {
-    final message = ChatMessage(
-      id: '2',
-      senderId: 'user-2',
-      senderName: 'bob',
-      text: 'Hi there',
-      timestamp: DateTime(2026, 3, 9, 9, 15).millisecondsSinceEpoch,
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: MessageBubbleWidget(message: message, isMe: false)),
+  testWidgets('group message shows the sender name; disappearing ones a timer', (tester) async {
+    await pump(
+      tester,
+      MessageBubbleWidget(
+        message: msg('Oi', DateTime(2026, 3, 9, 9, 15), expiresAt: 1),
+        isMe: false,
+        senderName: 'Bob',
       ),
     );
+    expect(find.text('Bob'), findsOneWidget);
+    expect(find.text('⏱ 09:15'), findsOneWidget);
+  });
 
-    expect(find.text('bob'), findsOneWidget);
-    expect(find.text('Hi there'), findsOneWidget);
-    expect(find.text('09:15'), findsOneWidget);
+  testWidgets('direct message from the other person has no name label', (tester) async {
+    await pump(tester, MessageBubbleWidget(message: msg('Oi', DateTime(2026, 3, 9, 9, 15)), isMe: false));
+    expect(find.text('Oi'), findsOneWidget);
+    expect(find.text('Você'), findsNothing);
   });
 }

@@ -16,7 +16,8 @@ void main() {
     final bob = ChatCryptoClient.create(identity: utf8.encode('bob'));
     await alice.createGroup(groupId: group);
     final add = await alice.addMembers(groupId: group, keyPackages: [await bob.generateKeyPackage()]);
-    await bob.joinGroup(welcome: add.welcome);
+    await alice.mergePendingCommit(groupId: group);
+    await bob.joinGroup(welcome: add.welcome!);
     final wire = await alice.encrypt(groupId: group, plaintext: utf8.encode('oi'));
     final msg = await bob.process(groupId: group, message: wire);
     expect(msg.kind, IncomingKind.application);
