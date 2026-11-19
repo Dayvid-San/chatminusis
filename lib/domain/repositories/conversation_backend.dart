@@ -58,6 +58,12 @@ abstract class ConversationBackend {
   Stream<WelcomeEnvelope> watchWelcomes(String uid);
   Future<void> deleteWelcome(String uid, String welcomeId);
 
+  /// A member who lost their keys (new device without backup) asks to be
+  /// re-invited. Any member with the right to commit membership repairs it.
+  Future<void> requestRejoin(String conversationId, String uid);
+  Stream<Set<String>> watchRejoinRequests(String conversationId);
+  Future<void> clearRejoin(String conversationId, String uid);
+
   /// Server-generated unique id for a new envelope.
   String newEnvelopeId(String conversationId);
 }

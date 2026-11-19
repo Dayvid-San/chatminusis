@@ -295,3 +295,23 @@ do $$ begin
          delete from public.welcomes where ts < now() - interval '30 days'$q$);
   end if;
 end $$;
+
+-- ---------------------------------------------------------------- rejoin requests
+-- A member who lost their keys (new device without backup) asks to be re-invited.
+create table public.rejoin_requests (
+  conversation_id text not null references public.conversations (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (conversation_id, user_id)
+);
+alter table public.rejoin_requests enable row level security;
+create policy rejoin_read on public.rejoin_requests for select to authenticated using (public.is_member(conversation_id));
+create policy rejoin_ask on public.rejoin_requests for insert to authenticated
+  with check (user_id = auth.uid() and public.is_member(conversation_id));
+create policy rejoin_clear on public.rejoin_requests for delete to authenticated using (public.is_member(conversation_id));
+grant select, insert, delete on public.rejoin_requests to authenticated;
+do $$ begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    alter publication supabase_realtime add table public.rejoin_requests;
+  end if;
+end $$;

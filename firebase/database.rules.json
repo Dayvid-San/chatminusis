@@ -115,6 +115,12 @@
         },
         "$other": {
           ".validate": false
+        },
+        "rejoin": {
+          "$m": {
+            ".write": "auth != null && ((auth.uid == $m && newData.val() == true && data.parent().parent().child('members').child($m).exists()) || (!newData.exists() && data.parent().parent().child('members').child(auth.uid).exists()))",
+            ".validate": "newData.val() == true"
+          }
         }
       }
     },

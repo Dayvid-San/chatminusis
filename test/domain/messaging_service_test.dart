@@ -35,7 +35,13 @@ void main() {
   final services = <MessagingService>[];
 
   Future<MessagingService> user(String uid, {MemorySecureStore? store}) async {
-    final s = MessagingService(backend: server, store: store ?? MemorySecureStore(), uid: uid, clock: () => now);
+    final s = MessagingService(
+      backend: server,
+      store: store ?? MemorySecureStore(),
+      uid: uid,
+      clock: () => now,
+      rejoinDelay: const Duration(milliseconds: 300),
+    );
     await s.start();
     services.add(s);
     return s;
@@ -254,6 +260,52 @@ void main() {
       expect(carol.keyStatus('bob'), KeyStatus.verified);
       expect(carol.conversation(id)!.keyChanged, isFalse);
       expect(await carol.safetyNumberWith('bob'), after);
+    });
+  });
+
+  group('reinstall without backup (rejoin)', () {
+    test('direct chat is repaired and keeps working', () async {
+      final alice = await user('alice');
+      var bob = await user('bob');
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+      await alice.send(id, 'antes');
+      await eventually(() => texts(bob, id).contains('antes'));
+
+      await bob.dispose();
+      services.remove(bob);
+      server.keyPackages.remove('bob');
+      bob = await user('bob'); // fresh device, no backup
+      expect(await bob.startDirect('alice'), id);
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false, reason: 'alice re-invites bob');
+      await eventually(() => alice.keyStatus('bob') == KeyStatus.changed, reason: 'new device = new key');
+      expect(server.rejoin[id] ?? <String>{}, isEmpty);
+
+      await bob.send(id, 'voltei sem backup');
+      await eventually(() => texts(alice, id).contains('voltei sem backup'));
+      await alice.send(id, 'bem-vindo de volta');
+      await eventually(() => texts(bob, id).contains('bem-vindo de volta'));
+      expect(texts(bob, id), isNot(contains('antes')), reason: 'old history is gone without backup');
+    });
+
+    test('in groups only admins repair; title is re-sent', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      var carol = await user('carol');
+      final id = await alice.createGroup('Turma', ['bob', 'carol']);
+      await eventually(() => carol.conversation(id)?.title == 'Turma' && bob.conversation(id)?.pendingWelcome == false);
+
+      await carol.dispose();
+      services.remove(carol);
+      server.keyPackages.remove('carol');
+      carol = await user('carol');
+      await eventually(
+        () => carol.conversation(id)?.title == 'Turma',
+        reason: 'admin re-invited and re-sent the title',
+      );
+      await bob.send(id, 'oi carol');
+      await eventually(() => texts(carol, id).contains('oi carol'));
+      expect(alice.conversation(id)!.memberUids.where((m) => m == 'carol'), hasLength(1));
     });
   });
 }

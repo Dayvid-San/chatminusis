@@ -150,3 +150,12 @@ test('identity keys: public to verified users, written only by the owner', async
   await assertSucceeds(get(ref(t.user('alice'), 'identity/bob')));
   await assertFails(get(ref(t.user('alice', false), 'identity/bob')));
 });
+
+test('rejoin requests: only the member asks for themselves; members clear them', async () => {
+  await makeGroup();
+  await assertSucceeds(set(ref(t.user('bob'), `conversations/${GROUP}/rejoin/bob`), true));
+  await assertFails(set(ref(t.user('bob'), `conversations/${GROUP}/rejoin/alice`), true));
+  await assertFails(set(ref(t.user('eve'), `conversations/${GROUP}/rejoin/eve`), true));
+  await assertFails(set(ref(t.user('eve'), `conversations/${GROUP}/rejoin/bob`), null));
+  await assertSucceeds(set(ref(t.user('alice'), `conversations/${GROUP}/rejoin/bob`), null));
+});
