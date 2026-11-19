@@ -99,6 +99,15 @@ void main() {
       expect(vm.state, SearchState.found);
     });
 
+    test('the server limit is reported like the app limit', () async {
+      profiles.serverRateLimited = true;
+      await vm.search('bob');
+      expect(vm.state, SearchState.rateLimited);
+      profiles.serverRateLimited = false;
+      await vm.search('bob');
+      expect(vm.state, SearchState.found);
+    });
+
     test('block, unblock and report', () async {
       await vm.toggleBlock('bob');
       await pumpEventQueue();

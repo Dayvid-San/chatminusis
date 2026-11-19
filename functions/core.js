@@ -78,3 +78,28 @@ export async function claimKeyPackageCore(db, callerUid, targetUid, nowMs = Date
   const lastResort = (await db.ref(`lastResortKeyPackage/${targetUid}/keyPackage`).get()).val();
   return typeof lastResort === 'string' ? lastResort : null;
 }
+
+/** Exact-nickname lookups allowed per user per hour. */
+export const SEARCHES_PER_HOUR = 30;
+
+const NICKNAME = /^[a-z0-9_.]{3,20}$/;
+
+/**
+ * Exact-nickname lookup, done by the server so the limit cannot be bypassed
+ * by a modified client. Returns `{ uid, nickname, displayName }` or null.
+ *
+ * Not found, yourself, and "the person blocked you" all look the same (null),
+ * and every call counts against the limit, so the directory cannot be mapped.
+ */
+export async function findByNicknameCore(db, callerUid, nickname, nowMs = Date.now()) {
+  if (typeof nickname !== 'string' || !NICKNAME.test(nickname) || nickname.startsWith('.') || nickname.endsWith('.') || nickname.includes('..')) {
+    throw new ServiceError('invalid-argument', 'Nickname inválido.');
+  }
+  await consumeLimit(db, `rateLimits/search/${callerUid}`, nowMs, SEARCHES_PER_HOUR);
+  const uid = (await db.ref(`nicknames/${nickname}`).get()).val();
+  if (typeof uid !== 'string' || uid === callerUid) return null;
+  if ((await db.ref(`blocks/${uid}/${callerUid}`).get()).exists()) return null;
+  const profile = (await db.ref(`users/${uid}`).get()).val();
+  if (!profile || typeof profile.nickname !== 'string') return null;
+  return { uid, nickname: profile.nickname, displayName: profile.displayName ?? profile.nickname };
+}

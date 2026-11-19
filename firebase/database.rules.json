@@ -29,7 +29,6 @@
     },
     "nicknames": {
       "$nick": {
-        ".read": "auth != null && auth.token.email_verified == true",
         ".write": "auth != null && auth.token.email_verified == true && ((!data.exists() && newData.val() == auth.uid) || (data.val() == auth.uid && !newData.exists() && newData.parent().parent().child('users').child(auth.uid).child('nickname').val() != $nick))",
         ".validate": "newData.isString() && $nick.matches(/^[a-z0-9_.]{3,20}$/) && newData.parent().parent().child('users').child(auth.uid).child('nickname').val() == $nick"
       }

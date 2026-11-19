@@ -1,5 +1,7 @@
 import '../entities/user_profile.dart';
 
+export '../errors.dart' show RateLimitedException;
+
 class NicknameTakenException implements Exception {
   const NicknameTakenException();
 }
@@ -14,7 +16,8 @@ abstract class ProfileRepository {
 
   Future<void> updateDisplayName({required String uid, required String displayName});
 
-  /// Exact match only: no prefix search, no suggestions.
+  /// Exact match only: no prefix search, no suggestions. Done by the server,
+  /// which rate limits it per user: throws `RateLimitedException` when exceeded.
   Future<UserProfile?> findByNickname(String nickname);
 
   Stream<Set<String>> watchBlocked(String uid);

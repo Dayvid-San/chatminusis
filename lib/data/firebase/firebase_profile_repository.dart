@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 
@@ -5,9 +6,11 @@ import '../../domain/entities/user_profile.dart';
 import '../../domain/repositories/profile_repository.dart';
 
 class FirebaseProfileRepository implements ProfileRepository {
-  FirebaseProfileRepository(this._db);
+  FirebaseProfileRepository(this._db, [FirebaseFunctions? functions])
+    : _functions = functions ?? FirebaseFunctions.instance;
 
   final FirebaseDatabase _db;
+  final FirebaseFunctions _functions;
 
   DatabaseReference get _root => _db.ref();
 
@@ -44,10 +47,12 @@ class FirebaseProfileRepository implements ProfileRepository {
     try {
       await _root.update(updates);
     } on FirebaseException catch (e) {
-      // The rules only reject the write when the nickname already belongs to someone else.
+      // The rules only reject the write when the nickname already belongs to
+      // someone else (nicknames cannot be read directly any more), so ask the
+      // rate-limited lookup who owns it.
       if (e.code == 'permission-denied') {
-        final owner = (await _root.child('nicknames/$nickname').get()).value;
-        if (owner != null && owner != uid) throw const NicknameTakenException();
+        final owner = await findByNickname(nickname);
+        if (owner != null && owner.uid != uid) throw const NicknameTakenException();
       }
       rethrow;
     }
@@ -57,11 +62,25 @@ class FirebaseProfileRepository implements ProfileRepository {
   Future<void> updateDisplayName({required String uid, required String displayName}) =>
       _root.child('users/$uid/displayName').set(displayName);
 
+  /// Server-side lookup (Cloud Function `findByNickname`): rate limited, and
+  /// hides people who blocked the caller.
   @override
   Future<UserProfile?> findByNickname(String nickname) async {
-    final owner = (await _root.child('nicknames/$nickname').get()).value;
-    if (owner is! String) return null;
-    return getProfile(owner);
+    try {
+      final result = await _functions.httpsCallable('findByNickname').call<Map<Object?, Object?>>({
+        'nickname': nickname,
+      });
+      final p = result.data['profile'];
+      if (p is! Map) return null;
+      return UserProfile(
+        uid: p['uid'] as String,
+        nickname: p['nickname'] as String,
+        displayName: p['displayName'] as String,
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'resource-exhausted') throw const RateLimitedException();
+      rethrow;
+    }
   }
 
   @override
