@@ -9,7 +9,7 @@
 | Ordem | Risco | Severidade | Esforço | Branch |
 |---|---|---|---|---|
 | 1 | R7: grupo trava após 30 dias offline ✅ | Baixa | Pequeno | `fix/r7-lacuna-de-commits` |
-| 2 | R4: esgotamento de KeyPackages | Média | Pequeno | `security/r4-keypackages` |
+| 2 | R4: esgotamento de KeyPackages ✅ | Média | Pequeno | `security/r4-keypackages` |
 | 3 | R5: limite de busca só no app | Média | Pequeno | `security/r5-limite-busca` |
 | 4 | R6: acesso ao backup | Baixa | Pequeno | `security/r6-acesso-backup` |
 | 5 | R3: membro comum remove outros no MLS | Média | Grande | `security/r3-validacao-commits` |
@@ -46,30 +46,37 @@
 
 ---
 
-## R4. Esgotamento dos KeyPackages de outra pessoa `[ ]`
+## R4. Esgotamento dos KeyPackages de outra pessoa `[x]`
 
 **Problema:** qualquer usuário verificado pode consumir todos os KeyPackages de alguém e impedir que essa pessoa seja convidada.
 
 ### Etapa 1. KeyPackage de último recurso (Rust)
-- [ ] Gerar um KeyPackage com a extensão `last_resort` (RFC 9420) no `chat_crypto`.
-- [ ] Manter sua parte privada mesmo após o uso; expor na ponte Dart.
-- [ ] Testes no Rust: o mesmo KeyPackage de último recurso funciona para entrar em dois grupos.
+- [x] Gerar um KeyPackage com a extensão `last_resort` (RFC 9420) no `chat_crypto`.
+- [x] Manter sua parte privada mesmo após o uso; expor na ponte Dart.
+- [x] Testes no Rust: o mesmo KeyPackage de último recurso funciona para entrar em dois grupos.
 
 ### Etapa 2. Publicação e consumo
-- [ ] Publicar o KeyPackage de último recurso separado dos comuns (nunca é apagado).
-- [ ] O consumo entrega um KeyPackage comum; só usa o de último recurso quando não há mais nenhum.
+- [x] Publicar o KeyPackage de último recurso separado dos comuns (nunca é apagado).
+- [x] O consumo entrega um KeyPackage comum; só usa o de último recurso quando não há mais nenhum.
 
 ### Etapa 3. Consumo apenas pelo servidor, com limite
-- [ ] Firebase: Cloud Function chamável `claimKeyPackage` (transação + contador por par quem pede → alvo, ex.: 10/hora); regras passam a negar a exclusão direta por terceiros.
-- [ ] Supabase: tabela de contadores e limite dentro de `claim_key_package`.
-- [ ] Recusar o consumo se o alvo bloqueou quem pede.
+- [x] Firebase: Cloud Function chamável `claimKeyPackage` (transação + contador por par quem pede → alvo, ex.: 10/hora); regras passam a negar a exclusão direta por terceiros.
+- [x] Supabase: tabela de contadores e limite dentro de `claim_key_package`.
+- [x] Recusar o consumo se o alvo bloqueou quem pede.
 
 ### Etapa 4. Testes e documentação
-- [ ] Testes das regras (emulador) e RLS (Postgres): exclusão direta negada, limite atingido, bloqueio respeitado.
-- [ ] Teste de ponta a ponta: KeyPackages comuns esgotados, convite ainda funciona pelo de último recurso.
-- [ ] Atualizar `SEGURANCA.md` (R4 → corrigido).
+- [x] Testes das regras (emulador) e RLS (Postgres): exclusão direta negada, limite atingido, bloqueio respeitado.
+- [x] Teste de ponta a ponta: KeyPackages comuns esgotados, convite ainda funciona pelo de último recurso.
+- [x] Atualizar `SEGURANCA.md` (R4 → corrigido).
 
 ---
+
+**Notas da implementação:**
+- O OpenMLS 0.9 já tem `mark_as_last_resort()`; a chave privada de um KeyPackage de último recurso **não** é apagada ao entrar num grupo, então ele serve para vários convites (testado no Rust, inclusive depois de restaurar o estado).
+- Firebase: o consumo é a Cloud Function chamável `claimKeyPackage` (exige App Check e e-mail verificado). A lógica está em `functions/core.js` e foi testada no emulador com o mesmo SDK de admin: consumo atômico, 4 clientes simultâneos sem repetir pacote, limite de 10 por hora por par, bloqueio respeitado. Nas regras, só o dono lê, grava ou apaga os próprios KeyPackages.
+- Supabase: `claim_key_package` ganhou bloqueio, limite por par (com trava consultiva contra corrida) e reserva de último recurso.
+- Descoberto no caminho: KeyPackages vencem em cerca de 90 dias. O app agora troca o pool inteiro a cada 45 dias e o de último recurso a cada 30, senão um convite poderia falhar para quem passa muito tempo sem abrir o app.
+- Limite escolhido: 10 convites por hora para a mesma pessoa. Quem precisar de mais pode ajustar `KP_CLAIMS_PER_HOUR` e o valor na função SQL.
 
 ## R5. Limite de busca por nickname só no app `[ ]`
 

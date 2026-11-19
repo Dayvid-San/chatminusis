@@ -2,9 +2,11 @@ import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getMessaging } from 'firebase-admin/messaging';
 import { onValueCreated } from 'firebase-functions/v2/database';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 
+import { ServiceError, claimKeyPackageCore, requireVerified } from './core.js';
 import { buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune } from './lib.js';
 
 initializeApp();
@@ -56,3 +58,26 @@ export const pruneOldEnvelopes = onSchedule({ schedule: 'every 24 hours', region
   if (Object.keys(updates).length > 0) await db.ref().update(updates);
   logger.info('pruned', { entries: Object.keys(updates).length });
 });
+
+/** Maps core errors to callable errors; anything unexpected stays opaque. */
+function guard(handler) {
+  return async (request) => {
+    try {
+      return await handler(request);
+    } catch (e) {
+      if (e instanceof ServiceError) throw new HttpsError(e.code, e.message);
+      logger.error('callable failed', { name: e?.name });
+      throw new HttpsError('internal', 'Erro interno.');
+    }
+  };
+}
+
+/** Atomic, rate-limited hand-over of a KeyPackage (clients cannot delete them directly). */
+export const claimKeyPackage = onCall(
+  { region: 'us-central1', enforceAppCheck: true },
+  guard(async (request) => {
+    const caller = requireVerified(request.auth);
+    const keyPackage = await claimKeyPackageCore(getDatabase(), caller, request.data?.uid);
+    return { keyPackage };
+  }),
+);

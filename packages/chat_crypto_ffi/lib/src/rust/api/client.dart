@@ -107,6 +107,9 @@ abstract class ChatCryptoClient implements RustOpaqueInterface {
 
   Future<List<Uint8List>> generateKeyPackages({required int count});
 
+  /// Reusable KeyPackage served only when the single-use pool is empty.
+  Future<Uint8List> generateLastResortKeyPackage();
+
   List<Uint8List> groupIds();
 
   bool hasGroup({required List<int> groupId});

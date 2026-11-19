@@ -82,9 +82,9 @@
     },
     "keyPackages": {
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified == true",
+        ".read": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
         "$kid": {
-          ".write": "auth != null && auth.token.email_verified == true && ((auth.uid == $uid) || (data.exists() && !newData.exists()))",
+          ".write": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
           ".validate": "newData.isString() && newData.val().length <= 4000"
         }
       }
@@ -252,6 +252,22 @@
           "$other": {
             ".validate": false
           }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "lastResortKeyPackage": {
+      "$uid": {
+        ".read": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
+        ".write": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['keyPackage', 'updatedAt'])",
+        "keyPackage": {
+          ".validate": "newData.isString() && newData.val().length <= 4000"
+        },
+        "updatedAt": {
+          ".validate": "newData.val() == now"
         },
         "$other": {
           ".validate": false

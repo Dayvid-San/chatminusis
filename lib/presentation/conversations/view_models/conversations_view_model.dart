@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../domain/entities/conversation.dart';
 import '../../../domain/entities/user_profile.dart';
+import '../../../domain/repositories/conversation_backend.dart';
 import '../../../domain/repositories/profile_repository.dart';
 import '../../../domain/services/messaging_service.dart';
 
@@ -79,6 +80,8 @@ class ConversationsViewModel extends ChangeNotifier {
     } on NoKeyPackagesException catch (e) {
       final names = e.uids.map(nameOf).join(', ');
       return '$names ainda não abriu o app para gerar chaves de criptografia.';
+    } on RateLimitedException {
+      return 'Muitas tentativas de convite para esta pessoa. Tente de novo mais tarde.';
     } on NotAllowedException catch (e) {
       return e.reason;
     } catch (_) {

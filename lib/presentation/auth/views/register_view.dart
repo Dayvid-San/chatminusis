@@ -109,10 +109,7 @@ class _RegisterViewState extends State<RegisterView> {
                   children: [
                     TextFormField(
                       controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Nome', border: OutlineInputBorder()),
                       textInputAction: TextInputAction.next,
                       validator: _validateName,
                       onChanged: (_) => authViewModel.clearError(),
@@ -121,10 +118,7 @@ class _RegisterViewState extends State<RegisterView> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'E-mail',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'E-mail', border: OutlineInputBorder()),
                       textInputAction: TextInputAction.next,
                       validator: _validateEmail,
                       onChanged: (_) => authViewModel.clearError(),
@@ -133,10 +127,7 @@ class _RegisterViewState extends State<RegisterView> {
                     TextFormField(
                       controller: _passwordController,
                       obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Senha',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()),
                       textInputAction: TextInputAction.done,
                       validator: _validatePassword,
                       onChanged: (_) => authViewModel.clearError(),
@@ -148,9 +139,7 @@ class _RegisterViewState extends State<RegisterView> {
                     else
                       ElevatedButton(
                         onPressed: _handleRegister,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                         child: const Text('Cadastrar'),
                       ),
                     if (authViewModel.errorMessage.isNotEmpty)
@@ -159,10 +148,7 @@ class _RegisterViewState extends State<RegisterView> {
                         child: Text(
                           authViewModel.errorMessage,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
                         ),
                       ),
                   ],

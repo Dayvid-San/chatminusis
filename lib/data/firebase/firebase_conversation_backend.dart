@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 
@@ -10,9 +11,11 @@ import '../../domain/repositories/conversation_backend.dart';
 /// Realtime Database transport for MLS blobs. Integrity of membership and
 /// epochs is enforced by `firebase/database.rules.json`.
 class FirebaseConversationBackend implements ConversationBackend {
-  FirebaseConversationBackend(this._db);
+  FirebaseConversationBackend(this._db, [FirebaseFunctions? functions])
+    : _functions = functions ?? FirebaseFunctions.instance;
 
   final FirebaseDatabase _db;
+  final FirebaseFunctions _functions;
   DatabaseReference get _root => _db.ref();
 
   static String _b64(Uint8List b) => base64Encode(b);
@@ -46,26 +49,26 @@ class FirebaseConversationBackend implements ConversationBackend {
   }
 
   @override
-  Future<void> clearKeyPackages(String uid) => _root.child('keyPackages/$uid').remove();
+  Future<void> clearKeyPackages(String uid) =>
+      _root.update({'keyPackages/$uid': null, 'lastResortKeyPackage/$uid': null});
 
   @override
+  Future<void> publishLastResortKeyPackage(String uid, Uint8List keyPackage) => _root
+      .child('lastResortKeyPackage/$uid')
+      .set({'keyPackage': _b64(keyPackage), 'updatedAt': ServerValue.timestamp});
+
+  /// Consumption happens on the server (Cloud Function `claimKeyPackage`):
+  /// clients cannot delete other people's KeyPackages.
+  @override
   Future<Uint8List?> claimKeyPackage(String uid) async {
-    for (var round = 0; round < 3; round++) {
-      final snap = await _root.child('keyPackages/$uid').orderByKey().limitToFirst(5).get();
-      final keys = snap.children.map((c) => c.key!).toList();
-      if (keys.isEmpty) return null;
-      for (final key in keys) {
-        Object? taken;
-        final result = await _root.child('keyPackages/$uid/$key').runTransaction((current) {
-          // Delete whatever is there; the server re-runs this with the real
-          // value if our cached view was stale, so only one claimer wins it.
-          taken = current;
-          return Transaction.success(null);
-        }, applyLocally: false);
-        if (result.committed && taken != null) return _unb64(taken);
-      }
+    try {
+      final result = await _functions.httpsCallable('claimKeyPackage').call<Map<Object?, Object?>>({'uid': uid});
+      final kp = result.data['keyPackage'];
+      return kp == null ? null : _unb64(kp);
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'resource-exhausted') throw const RateLimitedException();
+      rethrow;
     }
-    return null;
   }
 
   Map<String, Object?> _envelope(Envelope e) => {

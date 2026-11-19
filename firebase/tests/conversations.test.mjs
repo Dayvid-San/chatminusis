@@ -135,13 +135,30 @@ test('welcomes: only members invite members; recipient reads and deletes', async
   await assertSucceeds(set(ref(t.user('bob'), 'welcomes/bob/w_bob'), null));
 });
 
-test('key packages: owner publishes, anyone verified consumes one, nobody else writes', async () => {
+test('key packages: only the owner reads, writes and deletes (others go through the claim function)', async () => {
   await assertSucceeds(set(ref(t.user('bob'), 'keyPackages/bob/k1'), 'a3Ax'));
   await assertSucceeds(set(ref(t.user('bob'), 'keyPackages/bob/k2'), 'a3Ay'));
+  await assertSucceeds(get(ref(t.user('bob'), 'keyPackages/bob')));
   await assertFails(set(ref(t.user('mallory'), 'keyPackages/bob/k3'), 'ZmFrZQ=='));
   await assertFails(set(ref(t.user('mallory'), 'keyPackages/bob/k1'), 'ZmFrZQ=='));
-  await assertSucceeds(runTransaction(ref(t.user('alice'), 'keyPackages/bob/k1'), () => null));
+  await assertFails(runTransaction(ref(t.user('mallory'), 'keyPackages/bob/k1'), () => null), 'cannot drain bob');
+  await assertFails(set(ref(t.user('mallory'), 'keyPackages/bob/k1'), null));
+  await assertFails(get(ref(t.user('mallory'), 'keyPackages/bob')));
   await assertFails(get(ref(t.anon(), 'keyPackages/bob')));
+  await assertSucceeds(get(ref(t.user('bob'), 'keyPackages/bob/k1')));
+});
+
+test('last-resort key package: owner only', async () => {
+  const lr = { keyPackage: 'bGFzdA==', updatedAt: TS() };
+  await assertSucceeds(set(ref(t.user('bob'), 'lastResortKeyPackage/bob'), lr));
+  await assertFails(set(ref(t.user('mallory'), 'lastResortKeyPackage/bob'), lr));
+  await assertFails(get(ref(t.user('mallory'), 'lastResortKeyPackage/bob')));
+  await assertSucceeds(get(ref(t.user('bob'), 'lastResortKeyPackage/bob')));
+});
+
+test('rate-limit counters are not reachable by clients', async () => {
+  await assertFails(set(ref(t.user('alice'), 'rateLimits/kpClaim/alice/bob'), { start: 0, count: 0 }));
+  await assertFails(get(ref(t.user('alice'), 'rateLimits')));
 });
 
 test('identity keys: public to verified users, written only by the owner', async () => {

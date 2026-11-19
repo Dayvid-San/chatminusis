@@ -78,6 +78,11 @@ impl ChatCryptoClient {
         Ok(self.inner.generate_key_package()?)
     }
 
+    /// Reusable KeyPackage served only when the single-use pool is empty.
+    pub fn generate_last_resort_key_package(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(self.inner.generate_last_resort_key_package()?)
+    }
+
     #[frb(sync)]
     pub fn has_group(&self, group_id: Vec<u8>) -> bool {
         self.inner.has_group(&group_id)

@@ -211,6 +211,27 @@ impl Client {
         Ok(self.generate_key_packages(1)?.remove(0))
     }
 
+    /// Creates a *last-resort* KeyPackage (RFC 9420 §16.8): served only when
+    /// all single-use KeyPackages are gone, so nobody can be locked out of
+    /// being invited by someone who drained the pool. Unlike normal ones, its
+    /// private init key is NOT deleted after a group is joined with it, so it
+    /// can be used again. Regenerate it regularly (it expires like any other).
+    pub fn generate_last_resort_key_package(&self) -> Result<Vec<u8>> {
+        let capabilities =
+            Capabilities::new(None, None, Some(&[ExtensionType::LastResort]), None, None);
+        let bundle = KeyPackage::builder()
+            .mark_as_last_resort()
+            .leaf_node_capabilities(capabilities)
+            .build(
+                CIPHERSUITE,
+                &self.provider,
+                &self.signer,
+                self.credential.clone(),
+            )
+            .map_err(mls)?;
+        bundle.key_package().tls_serialize_detached().map_err(mls)
+    }
+
     // --------------------------------------------------------------- groups
 
     fn create_config() -> MlsGroupCreateConfig {

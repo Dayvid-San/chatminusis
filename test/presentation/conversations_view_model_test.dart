@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myapp/domain/repositories/conversation_backend.dart';
 import 'package:myapp/domain/services/messaging_service.dart';
 import 'package:myapp/presentation/conversations/view_models/conversations_view_model.dart';
 
@@ -40,6 +41,7 @@ void main() {
     final error = await vm.run(() => alice.startDirect('ninguem'));
     expect(error, contains('ainda não abriu o app'));
     expect(await vm.run(() => alice.createGroup('G', [])), 'Escolha pelo menos uma pessoa.');
+    expect(await vm.run(() => throw const RateLimitedException()), contains('Muitas tentativas'));
 
     vm.dispose();
     await alice.dispose();

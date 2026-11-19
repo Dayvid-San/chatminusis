@@ -3,9 +3,13 @@
   "private": true,
   "type": "module",
   "main": "index.js",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/lib.test.js",
+    "test:emulator": "cd .. && firebase/node_modules/.bin/firebase emulators:exec --only database --project demo-functions \"node --test functions/test/*.emulator.test.js\"",
+    "test:all": "npm test && npm run test:emulator"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0",

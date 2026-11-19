@@ -62,9 +62,12 @@ jobs:
       - name: Database rules (emulator)
         working-directory: firebase
         run: npm ci && npm test
-      - name: Cloud Functions logic
+      - name: Firebase CLI for the emulator (used by the functions tests)
+        working-directory: firebase
+        run: npm ci
+      - name: Cloud Functions (logic and emulator tests)
         working-directory: functions
-        run: npm ci && npm test
+        run: npm ci && npm run test:all
 
   supabase:
     name: Supabase RLS
