@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import 'core/security/app_lock.dart';
 import 'core/theme/app_theme.dart';
 import 'data/firebase/firebase_auth_repository.dart';
 import 'data/firebase/firebase_conversation_backend.dart';
@@ -25,6 +26,7 @@ import 'presentation/auth/views/register_view.dart';
 import 'presentation/auth/views/verify_email_view.dart';
 import 'presentation/profile/view_models/profile_view_model.dart';
 import 'presentation/profile/views/nickname_view.dart';
+import 'presentation/security/app_lock_gate.dart';
 import 'presentation/session/session_scope.dart';
 
 class AuthGate extends StatelessWidget {
@@ -72,11 +74,14 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await _activateAppCheck();
   await RustLib.init();
+  final appLock = AppLock(authenticator: LocalDeviceAuthenticator(), flags: SecureFlagStore());
+  await appLock.load();
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppTheme()),
+        ChangeNotifierProvider<AppLock>.value(value: appLock),
         Provider<AuthRepository>(create: (_) => FirebaseAuthRepository(FirebaseAuth.instance)),
         Provider<ConversationBackend>(create: (_) => FirebaseConversationBackend(FirebaseDatabase.instance)),
         Provider<SecureStoreFactory>.value(value: FileSecureStore.open),
@@ -100,6 +105,7 @@ class MyApp extends StatelessWidget {
       title: 'Chatminusis',
       theme: Provider.of<AppTheme>(context).getTheme(),
       routerConfig: _router,
+      builder: (context, child) => AppLockGate(child: child ?? const SizedBox.shrink()),
       debugShowCheckedModeBanner: false,
     );
   }

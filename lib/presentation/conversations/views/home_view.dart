@@ -8,18 +8,31 @@ import '../../auth/view_models/auth_view_model.dart';
 import '../../profile/views/nickname_view.dart';
 import '../../search/view_models/search_view_model.dart';
 import '../../search/views/search_view.dart';
+import '../../security/security_settings_view.dart';
 import '../view_models/conversations_view_model.dart';
 import 'conversation_view.dart';
 import 'create_group_view.dart';
 
 class HomeView extends StatelessWidget {
-  const HomeView({super.key, required this.onSignOut, this.extraActions = const []});
+  const HomeView({
+    super.key,
+    required this.onSignOut,
+    this.extraActions = const [],
+    this.securityExtras = const [],
+    this.deviceCompromised = false,
+  });
 
   /// Wipes local keys and signs out.
   final Future<void> Function(BuildContext context) onSignOut;
 
-  /// Extra app bar actions (e.g. backup), provided by the composition root.
+  /// Extra app bar actions, provided by the composition root.
   final List<Widget> extraActions;
+
+  /// Extra entries for the security screen (e.g. backup).
+  final List<Widget> securityExtras;
+
+  /// Root/jailbreak detected: show a warning.
+  final bool deviceCompromised;
 
   void _open(BuildContext context, String id) {
     final vm = context.read<ConversationsViewModel>();
@@ -85,83 +98,110 @@ class HomeView extends StatelessWidget {
         actions: [
           ...extraActions,
           PopupMenuButton<String>(
-            onSelected: (v) => v == 'profile' ? _editProfile(context) : onSignOut(context),
+            onSelected: (v) => switch (v) {
+              'profile' => _editProfile(context),
+              'security' => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => SecuritySettingsView(extra: securityExtras))),
+              _ => onSignOut(context),
+            },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'profile', child: Text('Editar perfil')),
+              PopupMenuItem(value: 'security', child: Text('Segurança e privacidade')),
               PopupMenuItem(value: 'logout', child: Text('Sair')),
             ],
           ),
         ],
       ),
-      body: vm.items.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Nenhuma conversa ainda.\nToque em + e busque alguém pelo nickname exato.',
-                  textAlign: TextAlign.center,
-                ),
+      body: Column(
+        children: [
+          if (deviceCompromised)
+            const MaterialBanner(
+              leading: Icon(Icons.gpp_bad_outlined, color: Colors.red),
+              content: Text(
+                'Este aparelho parece ter root/jailbreak. Outros apps podem conseguir ler suas mensagens nele.',
               ),
-            )
-          : ListView.separated(
-              itemCount: vm.items.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final c = vm.items[i];
-                final title = vm.titleOf(c);
-                final last = c.lastMessage;
-                return ListTile(
-                  leading: CircleAvatar(
-                    child: c.type == ConversationType.group
-                        ? const Icon(Icons.group)
-                        : Text(title.isEmpty ? '?' : title.characters.first.toUpperCase()),
-                  ),
-                  title: Text(title),
-                  subtitle: Text(
-                    c.pendingWelcome
-                        ? 'Aguardando troca de chaves…'
-                        : last == null
-                        ? 'Criptografada de ponta a ponta'
-                        : last.text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: c.membershipMismatch || c.keyChanged
-                      ? const Icon(Icons.warning_amber, color: Colors.orange)
-                      : null,
-                  onTap: () => _open(context, c.id),
-                );
-              },
+              actions: [SizedBox.shrink()],
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => showModalBottomSheet<void>(
-          context: context,
-          builder: (sheet) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.person_add_alt),
-                  title: const Text('Nova conversa'),
-                  onTap: () {
-                    Navigator.pop(sheet);
-                    _newDirect(context);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.group_add),
-                  title: const Text('Novo grupo'),
-                  onTap: () {
-                    Navigator.pop(sheet);
-                    _newGroup(context);
-                  },
-                ),
-              ],
+          Expanded(child: _list(context, vm)),
+        ],
+      ),
+      floatingActionButton: _fab(context),
+    );
+  }
+
+  Widget _list(BuildContext context, ConversationsViewModel vm) {
+    return vm.items.isEmpty
+        ? const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Text(
+                'Nenhuma conversa ainda.\nToque em + e busque alguém pelo nickname exato.',
+                textAlign: TextAlign.center,
+              ),
             ),
+          )
+        : ListView.separated(
+            itemCount: vm.items.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, i) {
+              final c = vm.items[i];
+              final title = vm.titleOf(c);
+              final last = c.lastMessage;
+              return ListTile(
+                leading: CircleAvatar(
+                  child: c.type == ConversationType.group
+                      ? const Icon(Icons.group)
+                      : Text(title.isEmpty ? '?' : title.characters.first.toUpperCase()),
+                ),
+                title: Text(title),
+                subtitle: Text(
+                  c.pendingWelcome
+                      ? 'Aguardando troca de chaves…'
+                      : last == null
+                      ? 'Criptografada de ponta a ponta'
+                      : last.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: c.membershipMismatch || c.keyChanged
+                    ? const Icon(Icons.warning_amber, color: Colors.orange)
+                    : null,
+                onTap: () => _open(context, c.id),
+              );
+            },
+          );
+  }
+
+  Widget _fab(BuildContext context) {
+    return FloatingActionButton(
+      onPressed: () => showModalBottomSheet<void>(
+        context: context,
+        builder: (sheet) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person_add_alt),
+                title: const Text('Nova conversa'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _newDirect(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.group_add),
+                title: const Text('Novo grupo'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _newGroup(context);
+                },
+              ),
+            ],
           ),
         ),
-        child: const Icon(Icons.add),
       ),
+      child: const Icon(Icons.add),
     );
   }
 }
