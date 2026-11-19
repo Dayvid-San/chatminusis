@@ -20,7 +20,7 @@ Future<Uint8List> addAndMerge(
   final out = await c.addMembers(groupId: group, keyPackages: kps);
   await c.mergePendingCommit(groupId: group);
   for (final o in others) {
-    await o.process(groupId: group, message: out.commit);
+    await o.process(groupId: group, message: out.commit, expected: ExpectedContent.commit);
   }
   return out.welcome!;
 }
@@ -46,7 +46,7 @@ void main() {
 
     final wire = await alice.encrypt(groupId: group, plaintext: b('olá bob'));
     expect(utf8.decode(wire, allowMalformed: true).contains('olá'), isFalse);
-    final got = await bob.process(groupId: group, message: wire);
+    final got = await bob.process(groupId: group, message: wire, expected: ExpectedContent.application);
     expect(got.kind, IncomingKind.application);
     expect(s(got.sender), 'alice');
     expect(s(got.plaintext), 'olá bob');
@@ -61,8 +61,14 @@ void main() {
     );
 
     final fromCarol = await carol.encrypt(groupId: group, plaintext: b('oi grupo'));
-    expect(s((await alice.process(groupId: group, message: fromCarol)).plaintext), 'oi grupo');
-    expect(s((await bob.process(groupId: group, message: fromCarol)).plaintext), 'oi grupo');
+    expect(
+      s((await alice.process(groupId: group, message: fromCarol, expected: ExpectedContent.application)).plaintext),
+      'oi grupo',
+    );
+    expect(
+      s((await bob.process(groupId: group, message: fromCarol, expected: ExpectedContent.application)).plaintext),
+      'oi grupo',
+    );
   });
 
   test('removal, rejected commits and errors as exceptions', () async {
@@ -78,12 +84,15 @@ void main() {
 
     final removal = await alice.removeMembers(groupId: group, identities: [b('bob')]);
     await alice.mergePendingCommit(groupId: group);
-    final r = await bob.process(groupId: group, message: removal.commit);
+    final r = await bob.process(groupId: group, message: removal.commit, expected: ExpectedContent.commit);
     expect(r.kind, IncomingKind.commit);
     expect(r.stillMember, isFalse);
 
     final secret = await alice.encrypt(groupId: group, plaintext: b('bob não lê'));
-    await expectLater(bob.process(groupId: group, message: secret), throwsA(anything));
+    await expectLater(
+      bob.process(groupId: group, message: secret, expected: ExpectedContent.application),
+      throwsA(anything),
+    );
     expect(() => ChatCryptoClient.create(identity: []), throwsA(anything));
   });
 
@@ -100,7 +109,10 @@ void main() {
     );
     expect(restored.groupIds().map(s).toList(), ['conversa-1']);
     final wire = await alice.encrypt(groupId: group, plaintext: b('após restaurar'));
-    expect(s((await restored.process(groupId: group, message: wire)).plaintext), 'após restaurar');
+    expect(
+      s((await restored.process(groupId: group, message: wire, expected: ExpectedContent.application)).plaintext),
+      'após restaurar',
+    );
 
     final sealed = await vaultSeal(key: key, context: b('f'), plaintext: b('histórico'));
     expect(s(await vaultOpen(key: key, context: b('f'), sealed: sealed)), 'histórico');

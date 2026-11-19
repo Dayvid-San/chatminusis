@@ -13,6 +13,18 @@ pub enum IncomingKind {
     Proposal,
     /// Our own message echoed back by the server.
     Own,
+    /// A proposal that is not allowed was dropped.
+    Ignored,
+}
+
+/// What the envelope that carried a message claims to hold. Content of
+/// another kind is refused without being applied.
+pub enum ExpectedContent {
+    Application,
+    /// A commit (admins only, enforced by the server).
+    Commit,
+    /// A proposal (any member). A commit hidden in one is refused.
+    Proposal,
 }
 
 pub struct IncomingMessage {
@@ -113,6 +125,21 @@ impl ChatCryptoClient {
         Ok(commit(self.inner.self_update(&group_id)?))
     }
 
+    /// A member without commit rights proposes to rotate their own keys; an
+    /// admin commits it with `commit_pending_proposals`.
+    pub fn propose_self_update(&mut self, group_id: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        Ok(self.inner.propose_self_update(&group_id)?)
+    }
+
+    #[frb(sync)]
+    pub fn has_pending_proposals(&self, group_id: Vec<u8>) -> anyhow::Result<bool> {
+        Ok(self.inner.has_pending_proposals(&group_id)?)
+    }
+
+    pub fn commit_pending_proposals(&mut self, group_id: Vec<u8>) -> anyhow::Result<CommitResult> {
+        Ok(commit(self.inner.commit_pending_proposals(&group_id)?))
+    }
+
     pub fn merge_pending_commit(&mut self, group_id: Vec<u8>) -> anyhow::Result<()> {
         Ok(self.inner.merge_pending_commit(&group_id)?)
     }
@@ -129,15 +156,26 @@ impl ChatCryptoClient {
         Ok(self.inner.encrypt(&group_id, plaintext)?)
     }
 
-    pub fn process(&mut self, group_id: Vec<u8>, message: Vec<u8>) -> anyhow::Result<IncomingMessage> {
+    pub fn process(
+        &mut self,
+        group_id: Vec<u8>,
+        message: Vec<u8>,
+        expected: ExpectedContent,
+    ) -> anyhow::Result<IncomingMessage> {
         use chat_crypto::Incoming;
+        let expected = match expected {
+            ExpectedContent::Application => chat_crypto::Expected::Application,
+            ExpectedContent::Commit => chat_crypto::Expected::Commit,
+            ExpectedContent::Proposal => chat_crypto::Expected::Proposal,
+        };
         let empty = IncomingMessage { kind: IncomingKind::Own, sender: vec![], plaintext: vec![], still_member: true };
-        Ok(match self.inner.process(&group_id, message)? {
+        Ok(match self.inner.process(&group_id, message, expected)? {
             Incoming::Application { sender, plaintext } => {
                 IncomingMessage { kind: IncomingKind::Application, sender, plaintext, ..empty }
             }
             Incoming::Commit { still_member } => IncomingMessage { kind: IncomingKind::Commit, still_member, ..empty },
             Incoming::Proposal => IncomingMessage { kind: IncomingKind::Proposal, ..empty },
+            Incoming::Ignored => IncomingMessage { kind: IncomingKind::Ignored, ..empty },
             Incoming::Own => empty,
         })
     }

@@ -68,14 +68,15 @@ test('application messages must use the current epoch and the real sender', asyn
   await assertFails(set(ref(bob, `mlsMessages/${GROUP}/m5`), { ...env('bob', 1), extra: true }));
 });
 
-test('commits need an epoch compare-and-set: only one wins', async () => {
-  await makeGroup();
-  const commit = (who, id, epoch) => ({ [`conversations/${GROUP}/epoch`]: epoch, [`mlsMessages/${GROUP}/${id}`]: env(who, epoch, 'commit') });
+test('commits need an epoch compare-and-set: only one wins (two admins racing)', async () => {
+  // Both creators of a direct chat are admins, so either may commit.
+  await update(ref(t.user('alice')), creation(DIRECT, 'alice', { alice: 'admin', bob: 'admin' }));
+  const commit = (who, id, epoch) => ({ [`conversations/${DIRECT}/epoch`]: epoch, [`mlsMessages/${DIRECT}/${id}`]: env(who, epoch, 'commit') });
   await assertSucceeds(update(ref(t.user('bob')), commit('bob', 'k1', 2)));
   await assertFails(update(ref(t.user('alice')), commit('alice', 'k2', 2)), 'same epoch loses');
   await assertFails(update(ref(t.user('alice')), commit('alice', 'k3', 4)), 'cannot skip');
-  await assertFails(set(ref(t.user('alice'), `mlsMessages/${GROUP}/k4`), env('alice', 2, 'commit')), 'must bump epoch');
-  await assertFails(set(ref(t.user('alice'), `conversations/${GROUP}/epoch`), 1), 'cannot go back');
+  await assertFails(set(ref(t.user('alice'), `mlsMessages/${DIRECT}/k4`), env('alice', 2, 'commit')), 'must bump epoch');
+  await assertFails(set(ref(t.user('alice'), `conversations/${DIRECT}/epoch`), 1), 'cannot go back');
   await assertSucceeds(update(ref(t.user('alice')), commit('alice', 'k5', 3)));
 });
 
@@ -175,4 +176,44 @@ test('rejoin requests: only the member asks for themselves; members clear them',
   await assertFails(set(ref(t.user('eve'), `conversations/${GROUP}/rejoin/eve`), true));
   await assertFails(set(ref(t.user('eve'), `conversations/${GROUP}/rejoin/bob`), null));
   await assertSucceeds(set(ref(t.user('alice'), `conversations/${GROUP}/rejoin/bob`), null));
+});
+
+// ------------------------------------------------------------------ R3
+// Only admins publish commits and advance the epoch; ordinary members may send
+// messages and proposals (a member's own key-rotation request).
+
+test('R3: an ordinary member cannot publish a commit or advance the epoch', async () => {
+  await makeGroup(); // alice admin, bob member
+  const commit = (who, id, epoch) => ({ [`conversations/${GROUP}/epoch`]: epoch, [`mlsMessages/${GROUP}/${id}`]: env(who, epoch, 'commit') });
+  await assertFails(update(ref(t.user('bob')), commit('bob', 'evil1', 2)), 'bob is not an admin');
+  await assertFails(set(ref(t.user('bob'), `conversations/${GROUP}/epoch`), 2), 'cannot bump the epoch alone either');
+  await assertFails(set(ref(t.user('bob'), `mlsMessages/${GROUP}/evil2`), env('bob', 2, 'commit')));
+  // The admin still can.
+  await assertSucceeds(update(ref(t.user('alice')), commit('alice', 'ok1', 2)));
+});
+
+test('R3: ordinary members can send proposals for the current epoch only', async () => {
+  await makeGroup();
+  await assertSucceeds(set(ref(t.user('bob'), `mlsMessages/${GROUP}/p1`), env('bob', 1, 'proposal')));
+  await assertFails(set(ref(t.user('bob'), `mlsMessages/${GROUP}/p2`), env('bob', 0, 'proposal')), 'stale epoch');
+  await assertFails(set(ref(t.user('bob'), `mlsMessages/${GROUP}/p3`), env('alice', 1, 'proposal')), 'sender must be the caller');
+  await assertFails(set(ref(t.user('eve'), `mlsMessages/${GROUP}/p4`), env('eve', 1, 'proposal')), 'not a member');
+  await assertFails(set(ref(t.user('bob'), `mlsMessages/${GROUP}/p5`), { ...env('bob', 1, 'proposal'), kind: 'other' }));
+});
+
+test('R3: in a direct chat both people are admins and can rotate keys with a commit', async () => {
+  await update(ref(t.user('alice')), creation(DIRECT, 'alice', { alice: 'admin', bob: 'admin' }));
+  const commit = (who, id, epoch) => ({ [`conversations/${DIRECT}/epoch`]: epoch, [`mlsMessages/${DIRECT}/${id}`]: env(who, epoch, 'commit') });
+  await assertSucceeds(update(ref(t.user('bob')), commit('bob', 'r1', 2)));
+  await assertSucceeds(update(ref(t.user('alice')), commit('alice', 'r2', 3)));
+});
+
+test('R3: demoting a member keeps them out of commits', async () => {
+  await update(ref(t.user('alice')), creation(GROUP, 'alice', { alice: 'admin', bob: 'member', carol: 'member' }));
+  await assertFails(update(ref(t.user('carol')), {
+    [`conversations/${GROUP}/epoch`]: 2,
+    [`mlsMessages/${GROUP}/c1`]: env('carol', 2, 'commit'),
+    [`conversations/${GROUP}/members/bob`]: null,
+    [`userConversations/bob/${GROUP}`]: null,
+  }), 'removing someone through a commit needs admin rights');
 });

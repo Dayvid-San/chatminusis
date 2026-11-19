@@ -45,7 +45,8 @@ abstract class ConversationBackend {
   });
 
   /// Publishes a commit with an epoch compare-and-set: only succeeds when the
-  /// server epoch is `commit.epoch - 1`. Membership changes (role or null to
+  /// server epoch is `commit.epoch - 1`. **Only admins** may commit (the server
+  /// cannot read the commit, but it knows who is an admin). Membership changes (role or null to
   /// remove) and Welcomes are applied in the same atomic write.
   /// Throws [EpochConflictException] on a lost race.
   Future<void> publishCommit({
@@ -55,6 +56,10 @@ abstract class ConversationBackend {
   });
 
   Future<void> publishApplication(Envelope message, {required List<String> notifyUids});
+
+  /// Publishes a member's own key-rotation proposal (current epoch only). Any
+  /// member may; an admin turns it into a commit.
+  Future<void> publishProposal(Envelope proposal);
 
   /// Leaves a conversation (removes self from the server membership).
   Future<void> leaveConversation({required String uid, required String conversationId});

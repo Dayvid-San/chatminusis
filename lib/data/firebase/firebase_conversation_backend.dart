@@ -74,7 +74,11 @@ class FirebaseConversationBackend implements ConversationBackend {
   Map<String, Object?> _envelope(Envelope e) => {
     'sender': e.sender,
     'epoch': e.epoch,
-    'kind': e.kind == EnvelopeKind.commit ? 'commit' : 'app',
+    'kind': switch (e.kind) {
+      EnvelopeKind.commit => 'commit',
+      EnvelopeKind.proposal => 'proposal',
+      EnvelopeKind.application => 'app',
+    },
     'payload': _b64(e.payload),
     'ts': ServerValue.timestamp,
   };
@@ -158,6 +162,10 @@ class FirebaseConversationBackend implements ConversationBackend {
       _root.child('mlsMessages/${message.conversationId}/${message.id}').set(_envelope(message));
 
   @override
+  Future<void> publishProposal(Envelope proposal) =>
+      _root.child('mlsMessages/${proposal.conversationId}/${proposal.id}').set(_envelope(proposal));
+
+  @override
   Future<void> leaveConversation({required String uid, required String conversationId}) => _root.update({
     'conversations/$conversationId/members/$uid': null,
     'userConversations/$uid/$conversationId': null,
@@ -206,7 +214,11 @@ class FirebaseConversationBackend implements ConversationBackend {
           conversationId: conversationId,
           sender: v['sender'] as String,
           epoch: v['epoch'] as int,
-          kind: v['kind'] == 'commit' ? EnvelopeKind.commit : EnvelopeKind.application,
+          kind: switch (v['kind']) {
+            'commit' => EnvelopeKind.commit,
+            'proposal' => EnvelopeKind.proposal,
+            _ => EnvelopeKind.application,
+          },
           payload: _unb64(v['payload']),
           timestamp: v['ts'] as int? ?? 0,
         );

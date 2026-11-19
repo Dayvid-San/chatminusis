@@ -103,7 +103,7 @@
           ".validate": "(!data.exists() && newData.val() == now) || data.val() == newData.val()"
         },
         "epoch": {
-          ".write": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+          ".write": "auth != null && data.parent().child('members').child(auth.uid).val() == 'admin'",
           ".validate": "newData.isNumber() && ((!data.exists() && newData.val() == 1) || newData.val() == data.val() + 1)"
         },
         "members": {
@@ -143,7 +143,7 @@
         ".read": "auth != null && root.child('conversations').child($cid).child('members').child(auth.uid).exists()",
         "$mid": {
           ".write": "auth != null && auth.token.email_verified == true && !data.exists() && newData.parent().parent().parent().child('conversations').child($cid).child('members').child(auth.uid).exists()",
-          ".validate": "newData.hasChildren(['sender', 'epoch', 'kind', 'payload', 'ts']) && ((newData.child('kind').val() == 'app' && newData.child('epoch').val() == root.child('conversations').child($cid).child('epoch').val() && newData.child('epoch').val() == newData.parent().parent().parent().child('conversations').child($cid).child('epoch').val()) || (newData.child('kind').val() == 'commit' && newData.child('epoch').val() == newData.parent().parent().parent().child('conversations').child($cid).child('epoch').val() && (root.child('conversations').child($cid).child('epoch').val() == newData.child('epoch').val() - 1 || (!root.child('conversations').child($cid).exists() && newData.child('epoch').val() == 1))))",
+          ".validate": "newData.hasChildren(['sender', 'epoch', 'kind', 'payload', 'ts']) && (((newData.child('kind').val() == 'app' || newData.child('kind').val() == 'proposal') && newData.child('epoch').val() == root.child('conversations').child($cid).child('epoch').val() && newData.child('epoch').val() == newData.parent().parent().parent().child('conversations').child($cid).child('epoch').val()) || (newData.child('kind').val() == 'commit' && newData.parent().parent().parent().child('conversations').child($cid).child('members').child(auth.uid).val() == 'admin' && newData.child('epoch').val() == newData.parent().parent().parent().child('conversations').child($cid).child('epoch').val() && (root.child('conversations').child($cid).child('epoch').val() == newData.child('epoch').val() - 1 || (!root.child('conversations').child($cid).exists() && newData.child('epoch').val() == 1))))",
           "sender": {
             ".validate": "newData.val() == auth.uid"
           },
@@ -151,7 +151,7 @@
             ".validate": "newData.isNumber()"
           },
           "kind": {
-            ".validate": "newData.val() == 'app' || newData.val() == 'commit'"
+            ".validate": "newData.val() == 'app' || newData.val() == 'commit' || newData.val() == 'proposal'"
           },
           "payload": {
             ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 262144"

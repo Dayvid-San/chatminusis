@@ -59,6 +59,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CommitResult dco_decode_commit_result(dynamic raw);
 
   @protected
+  ExpectedContent dco_decode_expected_content(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -135,6 +138,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CommitResult sse_decode_commit_result(SseDeserializer deserializer);
+
+  @protected
+  ExpectedContent sse_decode_expected_content(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -222,6 +228,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_commit_result(CommitResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_expected_content(
+    ExpectedContent self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);

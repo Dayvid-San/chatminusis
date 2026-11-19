@@ -164,11 +164,28 @@ class MessagingService {
   Future<void> _rotateRestored() async {
     await Future<void>.delayed(const Duration(milliseconds: 500)); // let envelopes replay first
     for (final c in _convs.values.where((c) => c.needsRotation && !c.removed).toList()) {
-      try {
-        await rotateKeys(c.id);
-      } catch (_) {
-        // Retried before the next send.
+      await _handleNeedsRotation(c.id);
+    }
+  }
+
+  /// After a restore the old device may have used message keys this copy does
+  /// not know about, so a new epoch is needed before sending. Admins commit it;
+  /// ordinary members cannot, so they drop the group state and ask to be
+  /// re-invited (the history from the backup is kept).
+  Future<void> _handleNeedsRotation(String id) async {
+    final c = _convs[id];
+    if (c == null || !c.needsRotation || c.removed || c.record == null) return; // role unknown yet: retried on update
+    try {
+      if (_canCommit(c)) {
+        await rotateKeys(id);
+      } else {
+        await _lock.run(
+          () =>
+              _dropGroupAndRejoin(c, 'Backup restaurado. Aguardando um administrador para reconectar você à conversa…'),
+        );
       }
+    } catch (_) {
+      // Retried before the next send.
     }
   }
 
@@ -466,16 +483,23 @@ class MessagingService {
   Future<void> _recoverFromGap(String id) async {
     final c = _convs[id];
     if (c == null || !_isBehind(c)) return; // caught up in the meantime
-    await _engine.deleteGroup(groupId: _gid(id));
+    await _dropGroupAndRejoin(c, 'Você ficou muito tempo offline. Reconectando à conversa…');
+  }
+
+  /// Forgets the group state (keeping the history) and asks to be re-invited.
+  Future<void> _dropGroupAndRejoin(_Conv c, String notice) async {
+    final id = c.id;
+    if (_engine.hasGroup(groupId: _gid(id))) await _engine.deleteGroup(groupId: _gid(id));
     await _persistEngine();
     await _envelopeSubs.remove(id)?.cancel(); // re-subscribed (with replay) after the new Welcome
     _buffer.remove(id);
+    c.needsRotation = false;
     c.messages.add(
       DecryptedMessage(
-        id: 'gap-${_now().millisecondsSinceEpoch}',
+        id: 'notice-${_now().millisecondsSinceEpoch}',
         conversationId: id,
         senderUid: '',
-        text: 'Você ficou muito tempo offline. Reconectando à conversa…',
+        text: notice,
         timestamp: _now().millisecondsSinceEpoch,
         outgoing: false,
       ),
@@ -576,6 +600,7 @@ class MessagingService {
     await _saveConv(c);
     _watchGap(c);
     await _reconcile(c);
+    if (c.needsRotation) unawaited(Future<void>(() => _handleNeedsRotation(id))); // queued behind this job
     _emit();
   }
 
@@ -662,7 +687,7 @@ class MessagingService {
             } catch (_) {}
           } else {
             try {
-              final r = await _engine.process(groupId: gid, message: e.payload);
+              final r = await _engine.process(groupId: gid, message: e.payload, expected: ExpectedContent.commit);
               if (r.kind == IncomingKind.commit && !r.stillMember) {
                 await _engine.deleteGroup(groupId: gid);
                 c.removed = true;
@@ -675,11 +700,25 @@ class MessagingService {
         } else {
           break; // a commit in between is still missing
         }
+      } else if (e.kind == EnvelopeKind.proposal) {
+        if (e.epoch > local) break; // wait for the commit that opens this epoch
+        // A member's own key-rotation request (already stored locally if it is
+        // ours). Only self updates are kept; anything else is dropped. Content
+        // that is not a proposal at all is refused by the core.
+        if (e.sender != uid && e.epoch == local) {
+          try {
+            await _engine.process(groupId: gid, message: e.payload, expected: ExpectedContent.proposal);
+          } catch (_) {
+            _addSystem(c, e, 'Uma solicitação inválida foi ignorada.');
+          }
+        }
+        _markProcessed(c, e.id);
       } else {
         if (e.epoch > local) break; // wait for the commit that opens this epoch
         if (e.sender != uid && e.epoch >= c.joinedEpoch) {
           try {
-            final r = await _engine.process(groupId: gid, message: e.payload);
+            // A commit disguised as a message is refused here, before anything is applied.
+            final r = await _engine.process(groupId: gid, message: e.payload, expected: ExpectedContent.application);
             if (r.kind == IncomingKind.application) {
               _handlePayload(c, e, utf8.decode(r.sender), r.plaintext);
             }
@@ -702,9 +741,30 @@ class MessagingService {
     if (!c.removed) {
       await _checkKeys(c);
       await _reconcile(c);
+      await _commitPendingProposals(c);
       await _rotateIfStale(c);
     }
     _emit();
+  }
+
+  /// Whether this device may publish commits in [c]: admins, and both people
+  /// of a direct chat. (The server enforces the same rule.)
+  bool _canCommit(_Conv c) => c.record?.isAdmin(uid) ?? false;
+
+  /// Admins turn members' stored key-rotation proposals into one commit.
+  Future<void> _commitPendingProposals(_Conv c) async {
+    final gid = _gid(c.id);
+    final record = c.record;
+    if (!_canCommit(c) || record == null || !_engine.hasGroup(groupId: gid)) return;
+    if (record.epoch != _engine.epoch(groupId: gid).toInt()) return; // catch up first
+    if (!_engine.hasPendingProposals(groupId: gid)) return;
+    try {
+      final out = await _engine.commitPendingProposals(groupId: gid);
+      await _publishCommit(c.id, out);
+    } catch (_) {
+      // Another admin committed first (the winner's commit covers the same
+      // proposals) or we are offline: retried on the next activity.
+    }
   }
 
   void _markProcessed(_Conv c, String id) {
@@ -938,7 +998,14 @@ class MessagingService {
   }
 
   /// Rotates this member's keys in the conversation (post-compromise security).
+  /// Admins commit directly; ordinary members send a proposal that an admin
+  /// commits (the server does not let them commit).
   Future<void> rotateKeys(String id) async {
+    final c = _convs[id];
+    if (c != null && c.record != null && !_canCommit(c)) {
+      await _lock.run(() => _proposeRotation(c));
+      return;
+    }
     await _withCommitRetry(id, () async {
       final out = await _engine.selfUpdate(groupId: _gid(id));
       await _publishCommit(id, out);
@@ -949,14 +1016,37 @@ class MessagingService {
     });
   }
 
+  Future<void> _proposeRotation(_Conv c) async {
+    final gid = _gid(c.id);
+    if (!_engine.hasGroup(groupId: gid)) return;
+    final proposal = await _engine.proposeSelfUpdate(groupId: gid);
+    final env = Envelope(
+      id: _backend.newEnvelopeId(c.id),
+      conversationId: c.id,
+      sender: uid,
+      epoch: _engine.epoch(groupId: gid).toInt(),
+      kind: EnvelopeKind.proposal,
+      payload: proposal,
+    );
+    await _backend.publishProposal(env);
+    _markProcessed(c, env.id);
+    c.lastRotation = _now().millisecondsSinceEpoch;
+    await _persistEngine();
+    await _saveConv(c);
+  }
+
   Future<void> _rotateIfStale(_Conv c) async {
     final age = _now().millisecondsSinceEpoch - c.lastRotation;
-    if (age < _rotationInterval.inMilliseconds) return;
+    if (age < _rotationInterval.inMilliseconds || c.record == null) return;
     try {
-      final out = await _engine.selfUpdate(groupId: _gid(c.id));
-      await _publishCommit(c.id, out);
-      c.lastRotation = _now().millisecondsSinceEpoch;
-      await _saveConv(c);
+      if (_canCommit(c)) {
+        final out = await _engine.selfUpdate(groupId: _gid(c.id));
+        await _publishCommit(c.id, out);
+        c.lastRotation = _now().millisecondsSinceEpoch;
+        await _saveConv(c);
+      } else {
+        await _proposeRotation(c);
+      }
     } catch (_) {
       // Lost a race or offline: try again on the next activity.
     }
@@ -988,7 +1078,7 @@ class MessagingService {
   }
 
   Future<void> _sendPayload(String id, Map<String, Object?> payload, {String? localText, Duration? ttl}) async {
-    if (_convs[id]?.needsRotation ?? false) await rotateKeys(id);
+    if (_convs[id]?.needsRotation ?? false) await _handleNeedsRotation(id);
     for (var attempt = 0; ; attempt++) {
       try {
         await _lock.run(() async {

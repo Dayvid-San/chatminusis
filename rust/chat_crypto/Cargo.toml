@@ -6,6 +6,14 @@ rust-version = "1.91"
 publish = false
 description = "E2EE core of the chat app (MLS / RFC 9420 via OpenMLS)."
 
+[features]
+# Helpers that build *malicious* messages so the tests can prove they are
+# refused. Never enabled in the app: only the self dev-dependency below uses it.
+testing = []
+
+[dev-dependencies]
+chat_crypto = { path = ".", features = ["testing"] }
+
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]
 

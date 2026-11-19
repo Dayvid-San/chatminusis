@@ -24,7 +24,10 @@ class ConversationRecord {
   bool isAdmin(String uid) => members[uid] == MemberRole.admin;
 }
 
-enum EnvelopeKind { application, commit }
+/// What an envelope claims to hold. [commit]s may only be published by admins;
+/// [proposal]s are an ordinary member's request to rotate their own keys.
+/// Receivers verify that the MLS content really matches the kind.
+enum EnvelopeKind { application, commit, proposal }
 
 /// An opaque MLS message as stored on the server.
 class Envelope {

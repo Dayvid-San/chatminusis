@@ -19,7 +19,7 @@ void main() {
     await alice.mergePendingCommit(groupId: group);
     await bob.joinGroup(welcome: add.welcome!);
     final wire = await alice.encrypt(groupId: group, plaintext: utf8.encode('oi'));
-    final msg = await bob.process(groupId: group, message: wire);
+    final msg = await bob.process(groupId: group, message: wire, expected: ExpectedContent.application);
     expect(msg.kind, IncomingKind.application);
     expect(utf8.decode(msg.plaintext), 'oi');
   });
