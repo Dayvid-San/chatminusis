@@ -8,6 +8,7 @@ import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/domain/entities/conversation.dart';
+import 'package:myapp/domain/repositories/conversation_backend.dart';
 import 'package:myapp/domain/services/messaging_service.dart';
 
 import '../fakes/memory_conversation_backend.dart';
@@ -62,10 +63,11 @@ void main() {
     services.clear();
   });
 
-  test('publishes identity and key packages on first start', () async {
+  test('publishes identity, key packages and a last-resort package on first start', () async {
     final alice = await user('alice');
     expect(server.identities['alice'], alice.signaturePublicKey);
     expect(server.keyPackages['alice'], hasLength(20));
+    expect(server.lastResort['alice'], isNotNull);
   });
 
   test('1:1 conversation: only ciphertext reaches the server', () async {
@@ -395,6 +397,63 @@ void main() {
       final epochs = server.envelopes[id]!.where((e) => e.kind == EnvelopeKind.commit).map((e) => e.epoch).toList();
       expect(epochs.toSet().length, epochs.length, reason: 'each epoch committed exactly once');
       expect(alice.conversation(id)!.memberUids.where((m) => m == 'carol'), hasLength(1));
+    });
+  });
+
+  group('draining key packages (R4)', () {
+    test('invites still work after the whole pool is consumed (last resort)', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      server.keyPackages['bob']!.clear(); // a griefer drained bob's pool
+      expect(server.lastResort['bob'], isNotNull);
+
+      final id = await alice.startDirect('bob');
+      await eventually(
+        () => bob.conversation(id)?.pendingWelcome == false,
+        reason: 'bob joins via the last resort package',
+      );
+      await alice.send(id, 'ainda consigo falar com bob');
+      await eventually(() => texts(bob, id).contains('ainda consigo falar com bob'));
+
+      // The same reusable package serves a second conversation.
+      final carol = await user('carol');
+      final g = await carol.createGroup('G', ['bob']);
+      await eventually(() => bob.conversation(g)?.pendingWelcome == false);
+      expect(server.lastResort['bob'], isNotNull, reason: 'never consumed');
+    });
+
+    test('claims are rate limited per person, with a friendly message in the UI layer', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      server.currentCaller = 'alice';
+      for (var i = 0; i < MemoryConversationBackend.claimsPerHour; i++) {
+        await server.claimKeyPackage('bob');
+      }
+      await expectLater(alice.startDirect('bob'), throwsA(isA<RateLimitedException>()));
+      expect(bob.conversations(), isEmpty);
+    });
+
+    test('old pool and last resort are replaced before they expire', () async {
+      final store = MemorySecureStore();
+      final alice = await user('alice', store: store);
+      final firstPool = server.keyPackages['alice']!.map(base64Encode).toSet();
+      final firstLast = base64Encode(server.lastResort['alice']!);
+      await alice.dispose();
+      services.remove(alice);
+
+      now = now.add(const Duration(days: 20));
+      await user('alice', store: store);
+      expect(base64Encode(server.lastResort['alice']!), firstLast, reason: 'still fresh');
+
+      now = now.add(const Duration(days: 15)); // 35 days: last resort renewed, pool kept
+      await (await user('alice', store: store)).dispose();
+      expect(base64Encode(server.lastResort['alice']!), isNot(firstLast));
+      expect(server.keyPackages['alice']!.map(base64Encode).toSet(), firstPool);
+
+      now = now.add(const Duration(days: 20)); // 55 days: pool replaced entirely
+      await user('alice', store: store);
+      expect(server.keyPackages['alice']!.map(base64Encode).toSet().intersection(firstPool), isEmpty);
+      expect(server.keyPackages['alice'], hasLength(20));
     });
   });
 }

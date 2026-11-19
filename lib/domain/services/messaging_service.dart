@@ -42,6 +42,12 @@ const maxGroupMembers = 256;
 const _keyPackageTarget = 20;
 const _keyPackageLowWater = 8;
 
+/// KeyPackages expire (about 90 days). Replace the whole pool well before.
+const _poolMaxAge = Duration(days: 45);
+
+/// The reusable last-resort KeyPackage is renewed this often.
+const _lastResortMaxAge = Duration(days: 30);
+
 /// Rotate own keys in a conversation (self-update commit) after this long.
 const _rotationInterval = Duration(days: 7);
 
@@ -146,6 +152,8 @@ class MessagingService {
   Future<void> _afterRestore() async {
     if (await _store.read(restoredFlag) == null) return;
     await _backend.clearKeyPackages(uid);
+    await _store.delete('kp_pool_at'); // forces a fresh pool and last-resort package
+    await _store.delete('last_resort_at');
     for (final c in _convs.values.where((c) => !c.removed)) {
       c.needsRotation = true;
       await _saveConv(c);
@@ -213,15 +221,41 @@ class MessagingService {
     await _store.write('mls_state', await _engine.exportState(key: _stateKey));
   }
 
+  Future<int?> _readInt(String name) async {
+    final raw = await _store.read(name);
+    return raw == null ? null : int.tryParse(utf8.decode(raw));
+  }
+
+  Future<void> _writeInt(String name, int value) => _store.write(name, utf8.encode('$value'));
+
+  /// Keeps single-use KeyPackages and the last-resort one published and fresh.
   Future<void> _ensureKeyPackages() async {
-    final count = await _backend.countKeyPackages(uid);
-    if (count >= _keyPackageLowWater) return;
-    final kps = await _lock.run(() async {
-      final kps = await _engine.generateKeyPackages(count: _keyPackageTarget - count);
-      await _persistEngine(); // private parts must be saved before publishing
-      return kps;
-    });
-    await _backend.publishKeyPackages(uid, kps);
+    final nowMs = _now().millisecondsSinceEpoch;
+    final poolAt = await _readInt('kp_pool_at');
+    final stale = poolAt != null && nowMs - poolAt > _poolMaxAge.inMilliseconds;
+    if (stale) await _backend.clearKeyPackages(uid); // pool and last resort: both are about to expire
+
+    final count = stale ? 0 : await _backend.countKeyPackages(uid);
+    if (count < _keyPackageLowWater) {
+      final kps = await _lock.run(() async {
+        final kps = await _engine.generateKeyPackages(count: _keyPackageTarget - count);
+        await _persistEngine(); // private parts must be saved before publishing
+        return kps;
+      });
+      await _backend.publishKeyPackages(uid, kps);
+      if (stale || poolAt == null) await _writeInt('kp_pool_at', nowMs);
+    }
+
+    final lastAt = await _readInt('last_resort_at');
+    if (stale || lastAt == null || nowMs - lastAt > _lastResortMaxAge.inMilliseconds) {
+      final kp = await _lock.run(() async {
+        final kp = await _engine.generateLastResortKeyPackage();
+        await _persistEngine();
+        return kp;
+      });
+      await _backend.publishLastResortKeyPackage(uid, kp);
+      await _writeInt('last_resort_at', nowMs);
+    }
   }
 
   Future<void> _loadConversations() async {

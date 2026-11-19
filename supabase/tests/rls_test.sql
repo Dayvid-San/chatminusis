@@ -71,13 +71,48 @@ insert into key_packages (user_id, key_package) values (:'B', 'kp1'), (:'B', 'kp
 select t_fail(format($$insert into key_packages (user_id, key_package) values (%L, 'fake')$$, :'A'));
 select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
 select t_count('select * from key_packages', 0);                              -- others' packages not listable
+delete from key_packages where user_id = :'B';                                -- RLS: affects 0 rows
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select t_count('select * from key_packages', 2);                              -- ...so bob still has both
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
 select t_count(format($$select 1 where claim_key_package(%L) = 'kp1'$$, :'B'), 1);
 select t_count(format($$select 1 where claim_key_package(%L) = 'kp2'$$, :'B'), 1);
-select t_count(format($$select 1 where claim_key_package(%L) is null$$, :'B'), 1);  -- single use
+select t_count(format($$select 1 where claim_key_package(%L) is null$$, :'B'), 1);  -- pool empty, no last resort yet
 select t_count('select * from identities', 1);
+
+\echo last resort and claim limits
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+insert into last_resort_key_packages (user_id, key_package) values (:'B', 'LAST');
+select t_fail(format($$insert into last_resort_key_packages (user_id, key_package) values (%L, 'fake')$$, :'A'));
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select t_count('select * from last_resort_key_packages', 0);                  -- private to the owner
+select t_count(format($$select 1 where claim_key_package(%L) = 'LAST'$$, :'B'), 1);   -- served when the pool is empty
+select t_count(format($$select 1 where claim_key_package(%L) = 'LAST'$$, :'B'), 1);   -- ...and never consumed
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select t_count('select * from last_resort_key_packages', 1);
+insert into key_packages (user_id, key_package) select :'B', 'kp' || g from generate_series(1, 30) g;
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+-- A already used 5 claims (2 above + 3 earlier) of the 10 allowed this hour.
+select claim_key_package(:'B') from generate_series(1, 5);
+select t_fail(format($$select claim_key_package(%L)$$, :'B'), 'rate_limited');
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select t_count('select * from key_packages', 25);                             -- the drain stopped at the limit
+select set_config('request.jwt.claims', json_build_object('sub', :'C')::text, false);
+select t_count(format($$select 1 where claim_key_package(%L) is not null$$, :'B'), 1);   -- others unaffected
+select t_fail(format($$select claim_key_package(%L)$$, :'C'), 'invalid_argument');
+select t_fail('select * from key_package_claims');                            -- counters are server-only
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+insert into blocks (user_id, blocked_id) values (:'B', :'E');
+select set_config('request.jwt.claims', json_build_object('sub', :'E')::text, false);
+select t_fail(format($$select claim_key_package(%L)$$, :'B'), 'permission_denied');
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+delete from blocks where blocked_id = :'E';
+delete from key_packages;
+delete from last_resort_key_packages;
 
 -- ===== conversations
 \echo conversations
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
 select create_conversation(:'DIRECT', 'direct', json_build_object(:'A', 'admin', :'B', 'admin')::jsonb,
   'c1', 'Y29tbWl0', json_build_array(json_build_object('recipient', :'B', 'payload', 'd2VsY29tZQ=='))::jsonb);
 select t_fail(format($$select create_conversation(%L, 'direct', '{}', 'c1', 'x', '[]')$$, :'DIRECT'), 'creator_must_be_admin');

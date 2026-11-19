@@ -50,6 +50,7 @@ dependencies:
   flutter_jailbreak_detection: ^1.10.0
   firebase_messaging: ^16.7.1
   supabase_flutter: ^2.18.3
+  cloud_functions: ^6.5.1
 
 dev_dependencies:
   flutter_test:

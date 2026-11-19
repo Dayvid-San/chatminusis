@@ -44,15 +44,38 @@ class MemoryConversationBackend implements ConversationBackend {
   @override
   Future<int> countKeyPackages(String uid) async => keyPackages[uid]?.length ?? 0;
 
-  @override
-  Future<void> clearKeyPackages(String uid) async => keyPackages.remove(uid);
+  final Map<String, Uint8List> lastResort = {};
+  final Map<String, List<DateTime>> claimLog = {};
+  DateTime Function() claimClock = DateTime.now;
+  static const claimsPerHour = 10;
 
   @override
-  Future<Uint8List?> claimKeyPackage(String uid) async {
-    final list = keyPackages[uid];
-    if (list == null || list.isEmpty) return null;
-    return list.removeAt(0);
+  Future<void> clearKeyPackages(String uid) async {
+    keyPackages.remove(uid);
+    lastResort.remove(uid);
   }
+
+  @override
+  Future<void> publishLastResortKeyPackage(String uid, Uint8List keyPackage) async => lastResort[uid] = keyPackage;
+
+  /// Same rules as the real servers: block check, per-pair hourly limit,
+  /// single-use first, last resort as reserve (never consumed).
+  @override
+  Future<Uint8List?> claimKeyPackage(String uid) async {
+    final caller = currentCaller;
+    if (blocks[uid]?.contains(caller) ?? false) throw StateError('permission-denied');
+    final now = claimClock();
+    final log = claimLog.putIfAbsent('$caller>$uid', () => []);
+    log.removeWhere((t) => now.difference(t) >= const Duration(hours: 1));
+    if (log.length >= claimsPerHour) throw const RateLimitedException();
+    log.add(now);
+    final list = keyPackages[uid];
+    if (list != null && list.isNotEmpty) return list.removeAt(0);
+    return lastResort[uid];
+  }
+
+  /// Who is calling [claimKeyPackage] (tests set it per service).
+  String currentCaller = '';
 
   void _addEnvelope(Envelope e) {
     final stamped = Envelope(

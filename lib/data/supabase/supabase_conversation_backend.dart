@@ -53,12 +53,28 @@ class SupabaseConversationBackend implements ConversationBackend {
       (await _client.from('key_packages').select('id').eq('user_id', uid)).length;
 
   @override
-  Future<void> clearKeyPackages(String uid) => _client.from('key_packages').delete().eq('user_id', uid);
+  Future<void> clearKeyPackages(String uid) async {
+    await _client.from('key_packages').delete().eq('user_id', uid);
+    await _client.from('last_resort_key_packages').delete().eq('user_id', uid);
+  }
+
+  @override
+  Future<void> publishLastResortKeyPackage(String uid, Uint8List keyPackage) =>
+      _client.from('last_resort_key_packages').upsert({
+        'user_id': uid,
+        'key_package': _b64(keyPackage),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
 
   @override
   Future<Uint8List?> claimKeyPackage(String uid) async {
-    final v = await _client.rpc<String?>('claim_key_package', params: {'p_user': uid});
-    return v == null ? null : _unb64(v);
+    try {
+      final v = await _client.rpc<String?>('claim_key_package', params: {'p_user': uid});
+      return v == null ? null : _unb64(v);
+    } on PostgrestException catch (e) {
+      if (e.message.contains('rate_limited')) throw const RateLimitedException();
+      rethrow;
+    }
   }
 
   List<Map<String, String>> _welcomes(List<WelcomeOut> ws) => [

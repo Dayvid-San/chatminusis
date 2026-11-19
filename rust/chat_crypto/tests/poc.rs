@@ -407,3 +407,46 @@ fn generates_many_key_packages() {
         5
     );
 }
+
+#[test]
+fn last_resort_key_package_can_be_reused() {
+    // Unlike a normal KeyPackage, a last-resort one keeps working for several
+    // groups, so draining the pool of normal ones cannot lock someone out.
+    let mut alice = client("alice");
+    let mut bob = client("bob");
+    let kp = bob.generate_last_resort_key_package().unwrap();
+
+    alice.create_group(b"g1".to_vec()).unwrap();
+    alice.create_group(b"g2".to_vec()).unwrap();
+    let (_, w1) = add(&mut alice, b"g1", vec![kp.clone()]);
+    let (_, w2) = add(&mut alice, b"g2", vec![kp]);
+
+    assert_eq!(bob.join_group(w1).unwrap(), b"g1".to_vec());
+    assert_eq!(
+        bob.join_group(w2).unwrap(),
+        b"g2".to_vec(),
+        "last resort is reusable"
+    );
+
+    let wire = alice.encrypt(b"g2", b"funciona".to_vec()).unwrap();
+    assert_eq!(
+        bob.process(b"g2", wire).unwrap(),
+        Incoming::Application {
+            sender: b"alice".to_vec(),
+            plaintext: b"funciona".to_vec()
+        }
+    );
+}
+
+#[test]
+fn last_resort_survives_state_restore() {
+    let key = chat_crypto::random_bytes(32).unwrap();
+    let mut alice = client("alice");
+    let bob = client("bob");
+    let kp = bob.generate_last_resort_key_package().unwrap();
+    let mut bob = Client::restore(&bob.export_state(&key).unwrap(), &key).unwrap();
+
+    alice.create_group(GROUP.to_vec()).unwrap();
+    let (_, welcome) = add(&mut alice, GROUP, vec![kp]);
+    assert_eq!(bob.join_group(welcome).unwrap(), GROUP);
+}

@@ -7,6 +7,11 @@ class EpochConflictException implements Exception {
   const EpochConflictException();
 }
 
+/// Too many KeyPackage claims for the same person in a short time.
+class RateLimitedException implements Exception {
+  const RateLimitedException();
+}
+
 /// Transport for E2EE conversations. The backend only stores and relays
 /// opaque blobs; it never sees keys or plaintext. Implemented for Firebase
 /// now and Supabase later (stage 11).
@@ -17,11 +22,19 @@ abstract class ConversationBackend {
   Future<void> publishKeyPackages(String uid, List<Uint8List> keyPackages);
   Future<int> countKeyPackages(String uid);
 
-  /// Deletes all of [uid]'s published KeyPackages (after restoring a backup,
-  /// their private parts may be missing).
+  /// Deletes all of [uid]'s published KeyPackages, last-resort one included
+  /// (after restoring a backup their private parts may be stale).
   Future<void> clearKeyPackages(String uid);
 
-  /// Atomically takes (and deletes) one KeyPackage of [uid]; null if none left.
+  /// Publishes (replacing the previous one) the reusable last-resort
+  /// KeyPackage, served when the single-use pool is empty.
+  Future<void> publishLastResortKeyPackage(String uid, Uint8List keyPackage);
+
+  /// Asks the server for one KeyPackage of [uid]. The server deletes
+  /// single-use ones atomically, falls back to the last-resort one, applies a
+  /// per-pair rate limit and refuses blocked callers.
+  /// Throws [RateLimitedException] when the limit is reached; null if the
+  /// person never published keys.
   Future<Uint8List?> claimKeyPackage(String uid);
 
   // Conversations.
