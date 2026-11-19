@@ -20,3 +20,5 @@ O objetivo do app é ser um chat privado com criptografia ponta a ponta (ver `do
 ## Processo
 10. Toda mudança que toque autenticação, criptografia, regras do banco ou armazenamento de chaves passa pelo agente [`security-reviewer`](../agents/security-reviewer.md) antes do merge em `develop`.
 11. Novas dependências: verificar manutenção, licença e histórico de vulnerabilidades antes de adicionar.
+12. **Proibido** adicionar dependências GPL, AGPL ou SSPL: o app é source-available, sem uso comercial nem forks. Só licenças permissivas (MIT, BSD, Apache-2.0, ISC, Zlib).
+13. Protocolo de mensagens: **MLS (OpenMLS)** para 1:1 e grupos. Não introduzir outro protocolo sem aprovação do Owner.
