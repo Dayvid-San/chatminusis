@@ -218,44 +218,16 @@ select t_count('select * from rejoin_requests', 1);
 delete from rejoin_requests where conversation_id = :'DIRECT';
 select t_count('select * from rejoin_requests', 0);
 
-\echo push and backup
+\echo push tokens and no server-side backups
 insert into push_tokens (user_id, device_id, token, platform) values (:'B', 'd1', 'tok', 'android');
-insert into backups (user_id, blob, size) values (:'B', 'Q01CSw==', 4);
-insert into backup_shares (user_id, share) values (:'B', repeat('A', 43) || '=');
 select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
-select t_count('select * from push_tokens', 0);
-select t_count('select * from backups', 0);
-select t_count('select * from backup_shares', 0);
-select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
-select t_count('select * from backup_shares', 0);                          -- not even the owner: only get_backup_share()
-select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
-select t_fail(format($$insert into backups (user_id, blob, size) values (%L, 'x', 1)$$, :'B'));
-
-\echo backup share access
-select set_config('request.jwt.claims', json_build_object('sub', :'B', 'amr',
-  json_build_array(json_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint - 10)))::text, false);
-select t_count(format($$select 1 where get_backup_share() = %L$$, repeat('A', 43) || '='), 1);   -- fresh login: delivered
-select t_count('select * from backup_downloads', 1);                                                -- ...and logged
-select set_config('request.jwt.claims', json_build_object('sub', :'B', 'amr',
-  json_build_array(json_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint - 400)))::text, false);
-select t_fail('select get_backup_share()', 'reauth_required');                                      -- login too old
-select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
-select t_fail('select get_backup_share()', 'reauth_required');                                      -- no amr at all
-select t_fail($$insert into backup_downloads (user_id) values ('22222222-2222-2222-2222-222222222222')$$);
-select t_fail('delete from backup_downloads');                                                      -- no privilege to erase the trail
-select t_count('select * from backup_downloads', 1);                                                -- trail cannot be erased
-select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
-select t_count('select * from backup_downloads', 0);                                                -- private to the owner
-select t_fail('select get_backup_share()', 'reauth_required');
-select set_config('request.jwt.claims', json_build_object('sub', :'B', 'amr',
-  json_build_array(json_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint - 5)))::text, false);
-select get_backup_share() from generate_series(1, 4);                                               -- 1 + 4 = 5 per hour
-select t_fail('select get_backup_share()', 'rate_limited');
-select t_count('select * from backup_downloads', 5);
-select set_config('request.jwt.claims', json_build_object('sub', :'C', 'amr',
-  json_build_array(json_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint)))::text, false);
-select t_count('select 1 where get_backup_share() is null', 1);                                    -- no backup: nothing delivered
-select t_count('select * from backup_downloads', 0);                                                -- ...and nothing logged
+select t_count('select * from push_tokens', 0);                              -- private to their owner
+-- Carrier model: the server holds no backups of any kind (tables and functions are gone).
+select t_fail('select * from backups');
+select t_fail('select * from backup_shares');
+select t_fail('select * from backup_downloads');
+select t_fail('select get_backup_share()');
+select t_fail('select seconds_since_login()');
 
 \echo reports
 select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);

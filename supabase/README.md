@@ -17,7 +17,7 @@ Backend alternativo ao Firebase, com as mesmas garantias: o servidor só guarda 
 1. Crie o projeto e ative **Auth → Email → Confirm email** (sem sessão antes da verificação).
 2. `supabase db push` (aplica a migração). Ative a extensão `pg_cron` se quiser a retenção automática.
 3. Edge Function: `supabase functions deploy notify` e defina os segredos `FCM_SERVICE_ACCOUNT` e `WEBHOOK_SECRET`.
-   Crie **dois Database Webhooks** apontando para a função, ambos com o cabeçalho `x-webhook-secret`: um em `INSERT` de `public.mls_messages` (push de nova mensagem) e outro em `INSERT` de `public.backup_downloads` (alerta de download do backup).
+   Crie um **Database Webhook** em `INSERT` de `public.mls_messages` apontando para a função, com o cabeçalho `x-webhook-secret` (push de nova mensagem, sem conteúdo).
 4. Rode o app com:
    ```
    flutter run --dart-define=BACKEND=supabase --dart-define=SUPABASE_URL=https://<projeto>.supabase.co --dart-define=SUPABASE_KEY=<publishable key>

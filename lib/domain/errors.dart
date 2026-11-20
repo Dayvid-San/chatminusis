@@ -2,8 +2,3 @@
 class RateLimitedException implements Exception {
   const RateLimitedException();
 }
-
-/// The operation needs a login made in the last few minutes.
-class ReauthRequiredException implements Exception {
-  const ReauthRequiredException();
-}

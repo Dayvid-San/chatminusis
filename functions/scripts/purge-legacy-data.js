@@ -1,33 +1,45 @@
 #!/usr/bin/env node
-// Deletes the legacy plain-text room (`/messages`) from the Realtime Database.
+// Removes data the server must no longer hold, from the Realtime Database:
+//   messages        the old plain-text public room
+//   backups,
+//   backupShares,
+//   backupDownloads the server-held backups that the carrier model dropped
 //
 // SAFE BY DEFAULT: it only counts and reports. Nothing is deleted without
 // `--confirm`, and `--confirm` first writes a local backup unless `--no-backup`.
+// (A backup of a *backup* is only useful for plain-text `messages`; the others
+// are encrypted blobs, but the file is written the same way.)
 //
-//   Dry run:  node scripts/delete-legacy-messages.js --project <id>
-//   Delete:   node scripts/delete-legacy-messages.js --project <id> --confirm
+//   Dry run:  node scripts/purge-legacy-data.js --project <id>
+//   Delete:   node scripts/purge-legacy-data.js --project <id> --confirm
 //
 // Credentials: `gcloud auth application-default login` (or GOOGLE_APPLICATION_CREDENTIALS).
 import { writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-export const LEGACY_PATH = 'messages';
+export const LEGACY_PATHS = ['messages', 'backups', 'backupShares', 'backupDownloads'];
 
 /**
  * @param db     Admin SDK database
  * @param opts   { confirm: boolean, backupPath?: string }
- * @returns      { count, deleted, backedUpTo }
+ * @returns      { count, deleted, backedUpTo, perPath }  (count = total top-level entries)
  */
 export async function deleteLegacyMessages(db, { confirm = false, backupPath = null } = {}) {
-  const snapshot = await db.ref(LEGACY_PATH).get();
-  const count = snapshot.exists() ? snapshot.numChildren() : 0;
-  const result = { count, deleted: false, backedUpTo: null };
+  const snapshots = {};
+  const perPath = {};
+  for (const path of LEGACY_PATHS) {
+    const snap = await db.ref(path).get();
+    snapshots[path] = snap.val();
+    perPath[path] = snap.exists() ? snap.numChildren() : 0;
+  }
+  const count = Object.values(perPath).reduce((a, b) => a + b, 0);
+  const result = { count, deleted: false, backedUpTo: null, perPath };
   if (!confirm || count === 0) return result;
   if (backupPath) {
-    await writeFile(backupPath, JSON.stringify(snapshot.val(), null, 2), { mode: 0o600 });
+    await writeFile(backupPath, JSON.stringify(snapshots, null, 2), { mode: 0o600 });
     result.backedUpTo = backupPath;
   }
-  await db.ref(LEGACY_PATH).remove();
+  await db.ref().update(Object.fromEntries(LEGACY_PATHS.map((p) => [p, null])));
   result.deleted = true;
   return result;
 }
@@ -50,14 +62,14 @@ async function main() {
   const { getDatabase } = await import('firebase-admin/database');
   initializeApp({ projectId: args.project, databaseURL: `https://${args.project}-default-rtdb.firebaseio.com` });
   const db = getDatabase();
-  const backupPath = args.confirm && args.backup ? `legacy-messages-backup-${Date.now()}.json` : null;
+  const backupPath = args.confirm && args.backup ? `legacy-data-backup-${Date.now()}.json` : null;
   const result = await deleteLegacyMessages(db, { confirm: args.confirm, backupPath });
   if (!args.confirm) {
-    console.log(`DRY RUN: /${LEGACY_PATH} holds ${result.count} message(s). Nothing was deleted. Re-run with --confirm to delete.`);
+    console.log(`DRY RUN: ${JSON.stringify(result.perPath)} (top-level entries per node). Nothing was deleted. Re-run with --confirm to delete.`);
   } else if (result.deleted) {
-    console.log(`Deleted ${result.count} message(s) from /${LEGACY_PATH}.${result.backedUpTo ? ` Backup: ${result.backedUpTo} (contains plain text: store it safely or shred it).` : ''}`);
+    console.log(`Deleted ${JSON.stringify(result.perPath)}.${result.backedUpTo ? ` Backup: ${result.backedUpTo} (the old room is PLAIN TEXT: store it safely or shred it).` : ''}`);
   } else {
-    console.log(`/${LEGACY_PATH} is already empty. Nothing to do.`);
+    console.log('Nothing to remove: the server holds none of the legacy data.');
   }
   db.goOffline();
 }

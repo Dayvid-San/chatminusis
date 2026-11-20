@@ -21,7 +21,7 @@ abstract class ConversationBackend {
   Future<int> countKeyPackages(String uid);
 
   /// Deletes all of [uid]'s published KeyPackages, last-resort one included
-  /// (after restoring a backup their private parts may be stale).
+  /// (when the pool is replaced before the key packages expire).
   Future<void> clearKeyPackages(String uid);
 
   /// Publishes (replacing the previous one) the reusable last-resort
@@ -74,7 +74,7 @@ abstract class ConversationBackend {
   Stream<WelcomeEnvelope> watchWelcomes(String uid);
   Future<void> deleteWelcome(String uid, String welcomeId);
 
-  /// A member who lost their keys (new device without backup) asks to be
+  /// A member who lost their keys (new device, reinstall) asks to be
   /// re-invited. Any member with the right to commit membership repairs it.
   Future<void> requestRejoin(String conversationId, String uid);
   Stream<Set<String>> watchRejoinRequests(String conversationId);

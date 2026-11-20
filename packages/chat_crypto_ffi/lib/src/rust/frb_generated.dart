@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 2054652962;
+  int get rustContentHash => 1659405986;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -212,23 +212,7 @@ abstract class RustLibApi extends BaseApi {
     required ChatCryptoClient that,
   });
 
-  Future<Uint8List> crateApiClientBackupOpen({
-    required String recoveryCode,
-    required List<int> serverShare,
-    required List<int> blob,
-  });
-
-  Future<Uint8List> crateApiClientBackupSeal({
-    required String recoveryCode,
-    required List<int> serverShare,
-    required List<int> plaintext,
-  });
-
-  String crateApiClientGenerateRecoveryCode();
-
   Future<void> crateApiClientInitApp();
-
-  bool crateApiClientIsValidRecoveryCode({required String code});
 
   Uint8List crateApiClientRandomBytes({required int len});
 
@@ -1251,100 +1235,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<Uint8List> crateApiClientBackupOpen({
-    required String recoveryCode,
-    required List<int> serverShare,
-    required List<int> blob,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(recoveryCode, serializer);
-          sse_encode_list_prim_u_8_loose(serverShare, serializer);
-          sse_encode_list_prim_u_8_loose(blob, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 28,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_prim_u_8_strict,
-          decodeErrorData: sse_decode_AnyhowException,
-        ),
-        constMeta: kCrateApiClientBackupOpenConstMeta,
-        argValues: [recoveryCode, serverShare, blob],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientBackupOpenConstMeta => const TaskConstMeta(
-    debugName: "backup_open",
-    argNames: ["recoveryCode", "serverShare", "blob"],
-  );
-
-  @override
-  Future<Uint8List> crateApiClientBackupSeal({
-    required String recoveryCode,
-    required List<int> serverShare,
-    required List<int> plaintext,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(recoveryCode, serializer);
-          sse_encode_list_prim_u_8_loose(serverShare, serializer);
-          sse_encode_list_prim_u_8_loose(plaintext, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 29,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_prim_u_8_strict,
-          decodeErrorData: sse_decode_AnyhowException,
-        ),
-        constMeta: kCrateApiClientBackupSealConstMeta,
-        argValues: [recoveryCode, serverShare, plaintext],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientBackupSealConstMeta => const TaskConstMeta(
-    debugName: "backup_seal",
-    argNames: ["recoveryCode", "serverShare", "plaintext"],
-  );
-
-  @override
-  String crateApiClientGenerateRecoveryCode() {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_AnyhowException,
-        ),
-        constMeta: kCrateApiClientGenerateRecoveryCodeConstMeta,
-        argValues: [],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientGenerateRecoveryCodeConstMeta =>
-      const TaskConstMeta(debugName: "generate_recovery_code", argNames: []);
-
-  @override
   Future<void> crateApiClientInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -1353,7 +1243,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1372,39 +1262,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
-  bool crateApiClientIsValidRecoveryCode({required String code}) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(code, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 32)!;
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_bool,
-          decodeErrorData: null,
-        ),
-        constMeta: kCrateApiClientIsValidRecoveryCodeConstMeta,
-        argValues: [code],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientIsValidRecoveryCodeConstMeta =>
-      const TaskConstMeta(
-        debugName: "is_valid_recovery_code",
-        argNames: ["code"],
-      );
-
-  @override
   Uint8List crateApiClientRandomBytes({required int len}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_u_32(len, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -1438,7 +1302,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1474,7 +1338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1510,7 +1374,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 32,
             port: port_,
           );
         },

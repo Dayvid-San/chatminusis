@@ -14,22 +14,13 @@ import 'conversation_view.dart';
 import 'create_group_view.dart';
 
 class HomeView extends StatelessWidget {
-  const HomeView({
-    super.key,
-    required this.onSignOut,
-    this.extraActions = const [],
-    this.securityExtras = const [],
-    this.deviceCompromised = false,
-  });
+  const HomeView({super.key, required this.onSignOut, this.extraActions = const [], this.deviceCompromised = false});
 
   /// Wipes local keys and signs out.
   final Future<void> Function(BuildContext context) onSignOut;
 
   /// Extra app bar actions, provided by the composition root.
   final List<Widget> extraActions;
-
-  /// Extra entries for the security screen (e.g. backup).
-  final List<Widget> securityExtras;
 
   /// Root/jailbreak detected: show a warning.
   final bool deviceCompromised;
@@ -102,7 +93,7 @@ class HomeView extends StatelessWidget {
               'profile' => _editProfile(context),
               'security' => Navigator.of(
                 context,
-              ).push(MaterialPageRoute<void>(builder: (_) => SecuritySettingsView(extra: securityExtras))),
+              ).push(MaterialPageRoute<void>(builder: (_) => const SecuritySettingsView())),
               _ => onSignOut(context),
             },
             itemBuilder: (_) => const [

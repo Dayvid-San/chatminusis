@@ -103,28 +103,3 @@ export async function findByNicknameCore(db, callerUid, nickname, nowMs = Date.n
   if (!profile || typeof profile.nickname !== 'string') return null;
   return { uid, nickname: profile.nickname, displayName: profile.displayName ?? profile.nickname };
 }
-
-/** The server share is only handed out right after a fresh login. */
-export const REAUTH_WINDOW_SECONDS = 5 * 60;
-
-/** Downloads of the server share allowed per user per hour. */
-export const BACKUP_SHARE_PER_HOUR = 5;
-
-/**
- * Delivers the owner's backup server share, but only if the account signed in
- * (password) within the last 5 minutes. Every delivery is logged for the owner
- * (`backupDownloads/{uid}`, timestamps only) so an unexpected one is noticed.
- *
- * `authTimeSec` is the token's `auth_time` (seconds since epoch).
- * Returns the base64 share or null if there is no backup.
- */
-export async function backupShareCore(db, uid, authTimeSec, nowMs = Date.now()) {
-  if (typeof authTimeSec !== 'number' || nowMs / 1000 - authTimeSec > REAUTH_WINDOW_SECONDS) {
-    throw new ServiceError('failed-precondition', 'reauth-required');
-  }
-  await consumeLimit(db, `rateLimits/backupShare/${uid}`, nowMs, BACKUP_SHARE_PER_HOUR);
-  const share = (await db.ref(`backupShares/${uid}/share`).get()).val();
-  if (typeof share !== 'string') return null;
-  await db.ref(`backupDownloads/${uid}`).push({ at: nowMs });
-  return share;
-}
