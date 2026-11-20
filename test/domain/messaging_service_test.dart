@@ -8,9 +8,9 @@ import 'dart:typed_data';
 import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/domain/entities/conversation.dart';
-import 'package:myapp/domain/repositories/conversation_backend.dart';
-import 'package:myapp/domain/services/messaging_service.dart';
+import 'package:myapp/features/messaging/domain/conversation.dart';
+import 'package:myapp/features/messaging/domain/conversation_backend.dart';
+import 'package:myapp/features/messaging/domain/messaging_service.dart';
 
 import '../fakes/memory_conversation_backend.dart';
 import '../fakes/memory_secure_store.dart';

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/core/security/app_lock.dart';
+import 'package:myapp/features/security/data/app_lock.dart';
 
 class FakeAuth implements DeviceAuthenticator {
   bool supported = true;

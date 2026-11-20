@@ -56,11 +56,11 @@ void main() {
       ]) {
         expect(filesContaining(sources, api), isEmpty, reason: api);
       }
-      expect(sources['lib/data/local/file_secure_store.dart'], contains('getApplicationSupportDirectory'));
+      expect(sources['lib/features/security/data/file_secure_store.dart'], contains('getApplicationSupportDirectory'));
     });
 
     test('the keychain item never leaves this device (no iCloud Keychain, no backup)', () {
-      expect(sources['lib/data/local/file_secure_store.dart'], contains('first_unlock_this_device'));
+      expect(sources['lib/features/security/data/file_secure_store.dart'], contains('first_unlock_this_device'));
     });
   });
 
@@ -74,8 +74,8 @@ void main() {
     test('every text field is private, except e-mail and password at sign in and sign up', () {
       const allowed = {
         'components/lib/src/privacy/private_input.dart', // the wrappers themselves
-        'lib/presentation/auth/views/login_view.dart', // password managers are the user's own choice
-        'lib/presentation/auth/views/register_view.dart',
+        'lib/features/auth/presentation/login_view.dart', // password managers are the user's own choice
+        'lib/features/auth/presentation/register_view.dart',
       };
       expect(filesContaining(sources, RegExp(r'\bTextField\('), except: allowed), isEmpty);
       expect(filesContaining(sources, RegExp(r'\bTextFormField\('), except: allowed), isEmpty);

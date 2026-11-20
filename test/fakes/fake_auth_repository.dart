@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:myapp/domain/entities/app_user.dart';
-import 'package:myapp/domain/repositories/auth_repository.dart';
+import 'package:myapp/features/auth/domain/app_user.dart';
+import 'package:myapp/features/auth/domain/auth_repository.dart';
 
 class FakeAuthRepository implements AuthRepository {
   final _controller = StreamController<AppUser?>.broadcast();

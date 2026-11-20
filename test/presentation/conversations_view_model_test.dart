@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/domain/repositories/conversation_backend.dart';
-import 'package:myapp/domain/services/messaging_service.dart';
-import 'package:myapp/presentation/conversations/view_models/conversations_view_model.dart';
+import 'package:myapp/features/messaging/domain/conversation_backend.dart';
+import 'package:myapp/features/messaging/domain/messaging_service.dart';
+import 'package:myapp/features/messaging/presentation/conversations_view_model.dart';
 
 import '../fakes/fake_profile_repository.dart';
 import '../fakes/memory_conversation_backend.dart';

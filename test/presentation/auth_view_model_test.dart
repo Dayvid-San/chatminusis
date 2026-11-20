@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/presentation/auth/view_models/auth_view_model.dart';
+import 'package:myapp/features/auth/presentation/auth_view_model.dart';
 
 import '../fakes/fake_auth_repository.dart';
 

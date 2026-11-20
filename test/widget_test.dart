@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/domain/entities/conversation.dart';
-import 'package:myapp/presentation/chat/widgets/message_bubble_widget.dart';
+import 'package:myapp/features/messaging/domain/conversation.dart';
+import 'package:myapp/features/messaging/presentation/message_bubble_widget.dart';
 
 DecryptedMessage msg(String text, DateTime at, {bool outgoing = false}) => DecryptedMessage(
   id: '1',

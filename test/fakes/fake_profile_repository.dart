@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:myapp/domain/entities/user_profile.dart';
-import 'package:myapp/domain/repositories/profile_repository.dart';
+import 'package:myapp/features/profile/domain/user_profile.dart';
+import 'package:myapp/features/profile/domain/profile_repository.dart';
 
 class FakeProfileRepository implements ProfileRepository {
   final Map<String, UserProfile> profiles = {};

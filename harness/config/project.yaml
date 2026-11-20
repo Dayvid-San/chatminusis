@@ -32,9 +32,11 @@ checks_crypto:                   # obrigatório se tocar rust/ ou packages/chat_
 security_review_required_paths:       # qualquer mudança aqui passa pelo agente security-reviewer
   - rust/**                            # núcleo criptográfico
   - packages/chat_crypto_ffi/rust/**   # ponte
-  - lib/domain/services/**             # serviço de mensagens (confirmação só após gravar, reentrada)
-  - lib/core/security/**               # bloqueio do app
-  - lib/data/**                        # Firebase, Supabase e cofre local
+  - lib/features/messaging/domain/**   # serviço de mensagens (confirmação só após gravar, reentrada)
+  - lib/features/messaging/data/**     # transporte Firebase e Supabase
+  - lib/features/security/**           # cofre local, bloqueio do app
+  - lib/features/*/data/**             # acesso a Firebase e Supabase
+  - test/architecture_test.dart        # fronteiras entre módulos
   - components/lib/src/privacy/**      # entrada privada e área de transferência privada
   - components/lib/src/chat/message_bubble.dart   # único chamador da cópia
   - firebase/**                        # regras do banco e seus testes
