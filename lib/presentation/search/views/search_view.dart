@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../domain/entities/user_profile.dart';
 import '../view_models/search_view_model.dart';
-import '../../shared_widgets/private_input.dart';
+import 'package:chatminusis_components/chatminusis_components.dart';
 
 /// Find a person by their exact nickname.
 class SearchView extends StatefulWidget {

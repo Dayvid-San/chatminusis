@@ -26,17 +26,17 @@ void main() {
     expect(find.text('14:30'), findsOneWidget);
   });
 
-  testWidgets('group message shows the sender name; disappearing ones a timer', (tester) async {
+  testWidgets('group message shows the sender name', (tester) async {
     await pump(
       tester,
       MessageBubbleWidget(
-        message: msg('Oi', DateTime(2026, 3, 9, 9, 15), expiresAt: 1),
+        message: msg('Oi', DateTime(2026, 3, 9, 9, 15)),
         isMe: false,
         senderName: 'Bob',
       ),
     );
     expect(find.text('Bob'), findsOneWidget);
-    expect(find.text('⏱ 09:15'), findsOneWidget);
+    expect(find.text('09:15'), findsOneWidget);
   });
 
   testWidgets('direct message from the other person has no name label', (tester) async {

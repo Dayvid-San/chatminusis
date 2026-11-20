@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/utils/nickname.dart';
 import '../../../domain/entities/user_profile.dart';
-import '../../shared_widgets/private_input.dart';
+import 'package:chatminusis_components/chatminusis_components.dart';
 
 /// Asks for an exact nickname and resolves it. Returns null if cancelled or not found.
 Future<UserProfile?> pickByNickname(

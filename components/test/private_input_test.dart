@@ -1,26 +1,28 @@
+import 'package:chatminusis_components/chatminusis_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/core/security/private_clipboard.dart';
-import 'package:myapp/domain/entities/conversation.dart';
-import 'package:myapp/presentation/chat/widgets/message_bubble_widget.dart';
-import 'package:myapp/presentation/shared_widgets/private_input.dart';
 
 ContextMenuButtonItem item(ContextMenuButtonType type) => ContextMenuButtonItem(type: type, onPressed: () {});
 
-DecryptedMessage message(String text, {String sender = 'bob'}) => DecryptedMessage(
-  id: 'm1',
-  conversationId: 'c',
-  senderUid: sender,
-  text: text,
-  timestamp: DateTime(2026, 11, 20, 9).millisecondsSinceEpoch,
-  outgoing: false,
-);
+class Msg {
+  const Msg(this.text, {this.sender = 'bob'});
+  final String text;
+  final String sender;
+}
 
-Future<void> pumpBubble(WidgetTester tester, DecryptedMessage m, {VoidCallback? onDelete}) => tester.pumpWidget(
+Msg message(String text, {String sender = 'bob'}) => Msg(text, sender: sender);
+
+Future<void> pumpBubble(WidgetTester tester, Msg m, {VoidCallback? onDelete}) => tester.pumpWidget(
   MaterialApp(
     home: Scaffold(
-      body: MessageBubbleWidget(message: m, isMe: false, onDelete: onDelete),
+      body: MessageBubble(
+        text: m.text,
+        timeLabel: '09:00',
+        isMine: false,
+        onDelete: onDelete,
+        hasMenu: m.sender.isNotEmpty,
+      ),
     ),
   ),
 );

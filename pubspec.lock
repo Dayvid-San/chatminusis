@@ -88,6 +88,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  chatminusis_components:
+    dependency: "direct main"
+    description:
+      path: components
+      relative: true
+    source: path
+    version: "1.0.0"
   clock:
     dependency: transitive
     description:

@@ -43,6 +43,8 @@ dependencies:
   firebase_app_check: ^0.4.9
   chat_crypto_ffi:
     path: packages/chat_crypto_ffi
+  chatminusis_components:
+    path: components
   flutter_secure_storage: ^11.2.0
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0

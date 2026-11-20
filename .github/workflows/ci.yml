@@ -46,6 +46,9 @@ jobs:
       - name: Bridge tests
         working-directory: packages/chat_crypto_ffi
         run: flutter pub get && flutter test
+      - name: Components tests
+        working-directory: components
+        run: flutter pub get && flutter analyze --no-fatal-infos && flutter test
 
   firebase:
     name: Firebase rules and functions
