@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:myapp/domain/entities/conversation.dart';
-import 'package:myapp/domain/repositories/conversation_backend.dart';
+import 'package:myapp/features/messaging/domain/conversation.dart';
+import 'package:myapp/features/messaging/domain/conversation_backend.dart';
 
 /// In-memory server that enforces the same invariants as the database rules:
 /// epoch compare-and-set, membership checks, single-use key packages.

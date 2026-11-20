@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:myapp/presentation/conversations/views/verify_view.dart';
+import 'package:myapp/features/messaging/presentation/verify_view.dart';
 
 void main() {
   test('safety number is shown as 3 lines of 4 groups of 5 digits', () {

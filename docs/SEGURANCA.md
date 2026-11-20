@@ -85,6 +85,6 @@ ser atualizado a cada mudança sensível.
 
 ## 6. Como manter
 
-- Toda mudança em `rust/`, `packages/chat_crypto_ffi/rust/`, `lib/domain/services/`, regras, RLS ou funções passa pelo `security-reviewer`.
+- Toda mudança em `rust/`, `packages/chat_crypto_ffi/rust/`, `lib/features/messaging/domain/`, regras, RLS ou funções passa pelo `security-reviewer`.
 - O CI (`.github/workflows/ci.yml`) roda todas as verificações acima em cada PR para `develop` e `master`.
 - Dependências novas: `cargo deny check` e checagem de licença; nada GPL/AGPL/SSPL.

@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:myapp/domain/repositories/secure_store.dart';
+import 'package:myapp/features/security/domain/secure_store.dart';
 
 class MemorySecureStore implements SecureStore {
   final Map<String, Uint8List> data = {};

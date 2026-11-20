@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/core/utils/nickname.dart';
-import 'package:myapp/presentation/profile/view_models/profile_view_model.dart';
-import 'package:myapp/presentation/search/view_models/search_view_model.dart';
+import 'package:myapp/features/profile/presentation/profile_view_model.dart';
+import 'package:myapp/features/search/presentation/search_view_model.dart';
 
 import '../fakes/fake_auth_repository.dart';
 import '../fakes/fake_profile_repository.dart';
