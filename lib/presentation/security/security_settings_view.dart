@@ -4,10 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/security/app_lock.dart';
 
 class SecuritySettingsView extends StatelessWidget {
-  const SecuritySettingsView({super.key, this.extra = const []});
-
-  /// Additional entries (e.g. backup), injected by the composition root.
-  final List<Widget> extra;
+  const SecuritySettingsView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -39,10 +36,9 @@ class SecuritySettingsView extends StatelessWidget {
             leading: Icon(Icons.enhanced_encryption_outlined),
             title: Text('Dados no aparelho'),
             subtitle: Text(
-              'Chaves e histórico cifrados (AES-256-GCM) com chave no Keystore/Keychain; fora dos backups do sistema.',
+              'Suas mensagens existem só neste aparelho: cifradas (AES-256-GCM), com chave no Keystore/Keychain e fora dos backups do sistema. Se você perder o aparelho, elas se perdem.',
             ),
           ),
-          ...extra,
         ],
       ),
     );

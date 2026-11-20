@@ -5,7 +5,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const GENERIC = { title: 'Chatminusis', body: 'Nova mensagem' };
-const BACKUP_ALERT = { title: 'Chatminusis', body: 'Seu backup foi baixado. Se não foi você, troque sua senha.' };
 
 function b64url(data: ArrayBuffer | string): string {
   const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
@@ -40,15 +39,8 @@ async function accessToken(sa: { client_email: string; private_key: string }): P
 
 Deno.serve(async (req) => {
   if (req.headers.get('x-webhook-secret') !== Deno.env.get('WEBHOOK_SECRET')) return new Response('forbidden', { status: 403 });
-  const { record, table } = await req.json();
+  const { record } = await req.json();
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-
-  // Alert: the backup key share was downloaded (webhook on INSERT into backup_downloads).
-  if (table === 'backup_downloads' && record?.user_id) {
-    const { data: own } = await db.from('push_tokens').select('user_id, device_id, token').eq('user_id', record.user_id);
-    if (own?.length) await sendAll(own, BACKUP_ALERT, 'chatminusis-backup', db);
-    return new Response('alerted');
-  }
 
   if (!record || record.kind !== 'app') return new Response('ignored');
   const { data: members } = await db.from('conversation_members').select('user_id').eq('conversation_id', record.conversation_id);

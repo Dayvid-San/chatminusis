@@ -116,9 +116,6 @@ class AuthViewModel extends ChangeNotifier {
     return verified;
   }
 
-  /// Confirms the current password again. Wrong password counts like a failed sign-in.
-  Future<bool> reauthenticate(String password) => _run(() => _repo.reauthenticate(password));
-
   Future<bool> updateDisplayName(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty || trimmed.length > 30) return Future.value(false);

@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2054652962;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1659405986;
 
 // Section: executor
 
@@ -1460,119 +1460,6 @@ fn wire__crate__api__client__ChatCryptoClient_signature_public_key_impl(
         },
     )
 }
-fn wire__crate__api__client__backup_open_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "backup_open",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_recovery_code = <String>::sse_decode(&mut deserializer);
-            let api_server_share = <Vec<u8>>::sse_decode(&mut deserializer);
-            let api_blob = <Vec<u8>>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::client::backup_open(
-                            api_recovery_code,
-                            api_server_share,
-                            api_blob,
-                        )?;
-                        std::result::Result::Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__client__backup_seal_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "backup_seal",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_recovery_code = <String>::sse_decode(&mut deserializer);
-            let api_server_share = <Vec<u8>>::sse_decode(&mut deserializer);
-            let api_plaintext = <Vec<u8>>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::client::backup_seal(
-                            api_recovery_code,
-                            api_server_share,
-                            api_plaintext,
-                        )?;
-                        std::result::Result::Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__client__generate_recovery_code_impl(
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "generate_recovery_code",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok = crate::api::client::generate_recovery_code()?;
-                    std::result::Result::Ok(output_ok)
-                })(),
-            )
-        },
-    )
-}
 fn wire__crate__api__client__init_app_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1604,36 +1491,6 @@ fn wire__crate__api__client__init_app_impl(
                     std::result::Result::Ok(output_ok)
                 })())
             }
-        },
-    )
-}
-fn wire__crate__api__client__is_valid_recovery_code_impl(
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "is_valid_recovery_code",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_code = <String>::sse_decode(&mut deserializer);
-            deserializer.end();
-            transform_result_sse::<_, ()>((move || {
-                let output_ok = Ok::<_, ()>(crate::api::client::is_valid_recovery_code(api_code))?;
-                std::result::Result::Ok(output_ok)
-            })())
         },
     )
 }
@@ -2106,12 +1963,10 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        28 => wire__crate__api__client__backup_open_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__client__backup_seal_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__client__init_app_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__client__safety_number_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__client__vault_open_impl(port, ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__client__vault_seal_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__client__init_app_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__client__safety_number_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__client__vault_open_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__client__vault_seal_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2152,9 +2007,7 @@ fn pde_ffi_dispatcher_sync_impl(
             rust_vec_len,
             data_len,
         ),
-        30 => wire__crate__api__client__generate_recovery_code_impl(ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__client__is_valid_recovery_code_impl(ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__client__random_bytes_impl(ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__client__random_bytes_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

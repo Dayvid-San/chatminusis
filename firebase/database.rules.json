@@ -210,46 +210,6 @@
         }
       }
     },
-    "backupShares": {
-      "$uid": {
-        ".write": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
-        ".validate": "newData.hasChildren(['share', 'createdAt'])",
-        "share": {
-          ".validate": "newData.isString() && newData.val().length == 44"
-        },
-        "createdAt": {
-          ".validate": "newData.val() == now"
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
-    },
-    "backups": {
-      "$uid": {
-        ".read": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
-        ".write": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
-        ".validate": "newData.hasChildren(['blob', 'meta'])",
-        "blob": {
-          ".validate": "newData.isString() && newData.val().length <= 10000000"
-        },
-        "meta": {
-          ".validate": "newData.hasChildren(['createdAt', 'size'])",
-          "createdAt": {
-            ".validate": "newData.val() == now"
-          },
-          "size": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          },
-          "$other": {
-            ".validate": false
-          }
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
-    },
     "lastResortKeyPackage": {
       "$uid": {
         ".read": "auth != null && auth.token.email_verified == true && auth.uid == $uid",
@@ -264,11 +224,6 @@
         "$other": {
           ".validate": false
         }
-      }
-    },
-    "backupDownloads": {
-      "$uid": {
-        ".read": "auth != null && auth.token.email_verified == true && auth.uid == $uid"
       }
     }
   }

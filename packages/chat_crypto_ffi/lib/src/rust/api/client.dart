@@ -46,34 +46,6 @@ Future<String> safetyNumber({
   theirKey: theirKey,
 );
 
-/// New 260-bit recovery code (52 characters in groups of 4).
-String generateRecoveryCode() =>
-    RustLib.instance.api.crateApiClientGenerateRecoveryCode();
-
-bool isValidRecoveryCode({required String code}) =>
-    RustLib.instance.api.crateApiClientIsValidRecoveryCode(code: code);
-
-/// Encrypts a backup: needs the recovery code AND the 32-byte server share.
-Future<Uint8List> backupSeal({
-  required String recoveryCode,
-  required List<int> serverShare,
-  required List<int> plaintext,
-}) => RustLib.instance.api.crateApiClientBackupSeal(
-  recoveryCode: recoveryCode,
-  serverShare: serverShare,
-  plaintext: plaintext,
-);
-
-Future<Uint8List> backupOpen({
-  required String recoveryCode,
-  required List<int> serverShare,
-  required List<int> blob,
-}) => RustLib.instance.api.crateApiClientBackupOpen(
-  recoveryCode: recoveryCode,
-  serverShare: serverShare,
-  blob: blob,
-);
-
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ChatCryptoClient>>
 abstract class ChatCryptoClient implements RustOpaqueInterface {
   Future<CommitResult> addMembers({

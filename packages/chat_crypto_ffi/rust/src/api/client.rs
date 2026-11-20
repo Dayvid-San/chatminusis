@@ -226,26 +226,6 @@ pub fn safety_number(my_identity: Vec<u8>, my_key: Vec<u8>, their_identity: Vec<
     chat_crypto::safety::safety_number(&my_identity, &my_key, &their_identity, &their_key)
 }
 
-/// New 260-bit recovery code (52 characters in groups of 4).
-#[frb(sync)]
-pub fn generate_recovery_code() -> anyhow::Result<String> {
-    Ok(chat_crypto::backup::generate_recovery_code()?)
-}
-
-#[frb(sync)]
-pub fn is_valid_recovery_code(code: String) -> bool {
-    chat_crypto::backup::normalize_recovery_code(&code).is_ok()
-}
-
-/// Encrypts a backup: needs the recovery code AND the 32-byte server share.
-pub fn backup_seal(recovery_code: String, server_share: Vec<u8>, plaintext: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-    Ok(chat_crypto::backup::seal(&recovery_code, &server_share, &plaintext)?)
-}
-
-pub fn backup_open(recovery_code: String, server_share: Vec<u8>, blob: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-    Ok(chat_crypto::backup::open(&recovery_code, &server_share, &blob)?)
-}
-
 #[frb(init)]
 pub fn init_app() {
     flutter_rust_bridge::setup_default_user_utils();

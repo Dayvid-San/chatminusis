@@ -133,14 +133,4 @@ void main() {
     expect(n1, hasLength(60));
     expect(n1, n2);
   });
-
-  test('backup needs recovery code and server share', () async {
-    final code = generateRecoveryCode();
-    expect(isValidRecoveryCode(code: code), isTrue);
-    expect(isValidRecoveryCode(code: 'abc'), isFalse);
-    final share = randomBytes(len: 32);
-    final blob = await backupSeal(recoveryCode: code, serverShare: share, plaintext: b('tudo'));
-    expect(s(await backupOpen(recoveryCode: code.toLowerCase(), serverShare: share, blob: blob)), 'tudo');
-    await expectLater(backupOpen(recoveryCode: code, serverShare: randomBytes(len: 32), blob: blob), throwsA(anything));
-  }, timeout: const Timeout(Duration(minutes: 2)));
 }

@@ -3,12 +3,10 @@
 //! - [`client`]: MLS (RFC 9420) groups via OpenMLS, for 1:1 and group chats.
 //! - [`vault`]: AES-256-GCM sealing of local data (MLS state, message history).
 //! - [`safety`]: safety numbers users compare to verify each other.
-//! - [`backup`]: two-share encrypted backups (recovery code + server share).
 //!
 //! The API deliberately uses only `Vec<u8>`, `String`, integers and plain
 //! structs so it can be exposed to Dart with `flutter_rust_bridge`.
 
-pub mod backup;
 pub mod client;
 pub mod safety;
 pub mod vault;

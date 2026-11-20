@@ -28,10 +28,6 @@ abstract class AuthRepository {
 
   Future<void> updateDisplayName(String name);
 
-  /// Confirms the password again (fresh login) for sensitive operations such
-  /// as downloading the backup key share.
-  Future<void> reauthenticate(String password);
-
   /// Fresh ID token, so security rules see an updated `email_verified`.
   Future<void> refreshToken();
 }

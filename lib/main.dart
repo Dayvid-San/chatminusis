@@ -13,12 +13,10 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'core/security/app_lock.dart';
 import 'core/theme/app_theme.dart';
 import 'data/firebase/firebase_auth_repository.dart';
-import 'data/firebase/firebase_backup_backend.dart';
 import 'data/firebase/firebase_conversation_backend.dart';
 import 'data/firebase/firebase_push_registry.dart';
 import 'data/local/file_secure_store.dart';
 import 'data/supabase/supabase_auth_repository.dart';
-import 'data/supabase/supabase_backup_backend.dart';
 import 'data/supabase/supabase_conversation_backend.dart';
 import 'data/supabase/supabase_profile_repository.dart';
 import 'data/supabase/supabase_push_registry.dart';
@@ -26,7 +24,6 @@ import 'data/firebase/firebase_profile_repository.dart';
 import 'domain/entities/app_user.dart';
 import 'domain/repositories/auth_repository.dart';
 import 'domain/entities/user_profile.dart';
-import 'domain/repositories/backup_backend.dart';
 import 'domain/repositories/conversation_backend.dart';
 import 'domain/repositories/profile_repository.dart';
 import 'domain/repositories/push_registry.dart';
@@ -116,7 +113,6 @@ Future<void> main() async {
         Provider<ConversationBackend>(
           create: (_) => sb != null ? SupabaseConversationBackend(sb) : FirebaseConversationBackend(db),
         ),
-        Provider<BackupBackend>(create: (_) => sb != null ? SupabaseBackupBackend(sb) : FirebaseBackupBackend(db)),
         Provider<PushRegistry>(
           create: (_) => sb != null
               ? SupabasePushRegistry(sb, FirebaseMessaging.instance)

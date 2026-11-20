@@ -9,10 +9,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/domain/entities/conversation.dart';
 import 'package:myapp/domain/repositories/conversation_backend.dart';
-import 'package:myapp/domain/services/backup_service.dart';
 import 'package:myapp/domain/services/messaging_service.dart';
 
-import '../fakes/memory_backup_backend.dart';
 import '../fakes/memory_conversation_backend.dart';
 import '../fakes/memory_secure_store.dart';
 
@@ -270,7 +268,7 @@ void main() {
     });
   });
 
-  group('reinstall without backup (rejoin)', () {
+  group('new device or reinstall (rejoin, no history)', () {
     test('direct chat is repaired and keeps working', () async {
       final alice = await user('alice');
       var bob = await user('bob');
@@ -282,17 +280,17 @@ void main() {
       await bob.dispose();
       services.remove(bob);
       server.keyPackages.remove('bob');
-      bob = await user('bob'); // fresh device, no backup
+      bob = await user('bob'); // fresh device: nothing carried over
       expect(await bob.startDirect('alice'), id);
       await eventually(() => bob.conversation(id)?.pendingWelcome == false, reason: 'alice re-invites bob');
       await eventually(() => alice.keyStatus('bob') == KeyStatus.changed, reason: 'new device = new key');
       expect(server.rejoin[id] ?? <String>{}, isEmpty);
 
-      await bob.send(id, 'voltei sem backup');
-      await eventually(() => texts(alice, id).contains('voltei sem backup'));
+      await bob.send(id, 'voltei num aparelho novo');
+      await eventually(() => texts(alice, id).contains('voltei num aparelho novo'));
       await alice.send(id, 'bem-vindo de volta');
       await eventually(() => texts(bob, id).contains('bem-vindo de volta'));
-      expect(texts(bob, id), isNot(contains('antes')), reason: 'old history is gone without backup');
+      expect(texts(bob, id), isNot(contains('antes')), reason: 'old history stays only on the old device');
     });
 
     test('in groups only admins repair; title is re-sent', () async {
@@ -545,35 +543,6 @@ void main() {
 
       await bob.send(id, 'chaves novas');
       await eventually(() => texts(alice, id).contains('chaves novas'));
-    });
-
-    test('a restored ordinary member rejoins through an admin instead of committing', () async {
-      final alice = await user('alice');
-      final bobStore = MemorySecureStore();
-      var bob = await user('bob', store: bobStore);
-      final id = await alice.createGroup('Equipe', ['bob']);
-      await eventually(() => bob.conversation(id)?.pendingWelcome == false && bob.conversation(id)?.title == 'Equipe');
-      await alice.send(id, 'antes do backup');
-      await eventually(() => texts(bob, id).contains('antes do backup'));
-
-      final backups = MemoryBackupBackend();
-      final code = await BackupService(backend: backups, store: bobStore, uid: 'bob').enable(bob);
-      await bob.dispose();
-      services.remove(bob);
-
-      final newStore = MemorySecureStore();
-      await BackupService(backend: backups, store: newStore, uid: 'bob').restore(code);
-      bob = await user('bob', store: newStore);
-
-      await eventually(() => texts(bob, id).any((t) => t.contains('Backup restaurado')), reason: 'notice shown');
-      await eventually(
-        () => bob.conversation(id)?.pendingWelcome == false && bob.engine.hasGroup(groupId: utf8.encode(id)),
-        reason: 'alice re-invited bob',
-      );
-      expect(server.envelopes[id]!.where((e) => e.kind == EnvelopeKind.commit && e.sender == 'bob'), isEmpty);
-      expect(texts(bob, id), contains('antes do backup'), reason: 'history restored from the backup');
-      await bob.send(id, 'voltei');
-      await eventually(() => texts(alice, id).contains('voltei'));
     });
   });
 }
