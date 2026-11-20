@@ -36,13 +36,10 @@ abstract class ConversationBackend {
   Future<Uint8List?> claimKeyPackage(String uid);
 
   // Conversations.
-  /// Creates the conversation together with its first commit (epoch 1).
+  /// Creates the conversation at epoch 1 together with the Welcomes. No
+  /// envelope is stored: invitees join through their Welcome.
   /// Throws [EpochConflictException] if it already exists.
-  Future<void> createConversation({
-    required ConversationRecord record,
-    required Envelope firstCommit,
-    required List<WelcomeOut> welcomes,
-  });
+  Future<void> createConversation({required ConversationRecord record, required List<WelcomeOut> welcomes});
 
   /// Publishes a commit with an epoch compare-and-set: only succeeds when the
   /// server epoch is `commit.epoch - 1`. **Only admins** may commit (the server
@@ -55,7 +52,13 @@ abstract class ConversationBackend {
     List<WelcomeOut> welcomes = const [],
   });
 
-  Future<void> publishApplication(Envelope message, {required List<String> notifyUids});
+  /// Publishes a sealed chat message. The server works out who must receive it.
+  Future<void> publishApplication(Envelope message);
+
+  /// "I received and stored this": the carrier forgets the envelope once every
+  /// current member (but the sender) confirmed. Call it only after the message
+  /// is safely saved on this device, because afterwards the server no longer has it.
+  Future<void> ackEnvelope(Envelope envelope, String uid);
 
   /// Publishes a member's own key-rotation proposal (current epoch only). Any
   /// member may; an admin turns it into a commit.

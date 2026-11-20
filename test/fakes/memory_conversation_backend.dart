@@ -77,7 +77,22 @@ class MemoryConversationBackend implements ConversationBackend {
   /// Who is calling [claimKeyPackage] (tests set it per service).
   String currentCaller = '';
 
-  void _addEnvelope(Envelope e) {
+  /// Every envelope the carrier ever accepted, even after it forgot it (tests
+  /// use this to check what was published; the server itself keeps none of it).
+  final List<Envelope> publishLog = [];
+
+  /// Who has not received an envelope yet ('conversation/envelope' -> uids).
+  final Map<String, Set<String>> _pending = {};
+
+  /// Who an undelivered envelope of [conversationId] is still waiting for.
+  Set<String> waitingFor(String conversationId) => {
+    for (final entry in _pending.entries)
+      if (entry.key.startsWith('$conversationId/')) ...entry.value,
+  };
+
+  /// Stores an envelope for [recipients] (the members at publication, minus the
+  /// sender). Nobody to deliver to: nothing is stored, like the real servers.
+  void _store(Envelope e, Set<String> recipients) {
     final stamped = Envelope(
       id: e.id,
       conversationId: e.conversationId,
@@ -87,8 +102,45 @@ class MemoryConversationBackend implements ConversationBackend {
       payload: e.payload,
       timestamp: DateTime.now().millisecondsSinceEpoch,
     );
+    publishLog.add(stamped);
+    if (recipients.isEmpty) return;
     (envelopes[e.conversationId] ??= []).add(stamped);
+    _pending['${e.conversationId}/${e.id}'] = recipients;
     _envelopeCtl.add(stamped);
+  }
+
+  Set<String> _othersThan(String sender, ConversationRecord r) => r.members.keys.where((m) => m != sender).toSet();
+
+  /// Forgets every envelope that no CURRENT member is still waiting for.
+  void _settle(String cid) {
+    final members = conversations[cid]?.members.keys.toSet() ?? <String>{};
+    envelopes[cid]?.removeWhere((e) {
+      final key = '$cid/${e.id}';
+      final done = (_pending[key] ?? <String>{}).intersection(members).isEmpty;
+      if (done) _pending.remove(key);
+      return done;
+    });
+  }
+
+  /// Simulates confirmations that never reach the server (offline, crash).
+  bool dropAcks = false;
+
+  @override
+  Future<void> ackEnvelope(Envelope envelope, String uid) async {
+    if (dropAcks) throw StateError('network');
+    final cid = envelope.conversationId;
+    if (!(conversations[cid]?.members.containsKey(uid) ?? false)) throw StateError('not_member');
+    _pending['$cid/${envelope.id}']?.remove(uid);
+    _settle(cid);
+  }
+
+  /// Simulates the retention safety net (undelivered envelopes expire).
+  void pruneEnvelopes(String conversationId, bool Function(Envelope) test) {
+    envelopes[conversationId]?.removeWhere((e) {
+      final drop = test(e);
+      if (drop) _pending.remove('$conversationId/${e.id}');
+      return drop;
+    });
   }
 
   void _addWelcomes(String cid, String from, int epoch, List<WelcomeOut> ws) {
@@ -100,21 +152,16 @@ class MemoryConversationBackend implements ConversationBackend {
   }
 
   @override
-  Future<void> createConversation({
-    required ConversationRecord record,
-    required Envelope firstCommit,
-    required List<WelcomeOut> welcomes,
-  }) async {
+  Future<void> createConversation({required ConversationRecord record, required List<WelcomeOut> welcomes}) async {
     _maybeFail();
     if (conversations.containsKey(record.id)) throw const EpochConflictException();
     for (final m in record.members.keys) {
-      if (m != firstCommit.sender && (blocks[m]?.contains(firstCommit.sender) ?? false)) {
+      if (m != record.createdBy && (blocks[m]?.contains(record.createdBy) ?? false)) {
         throw StateError('permission-denied');
       }
     }
     conversations[record.id] = record;
-    _addEnvelope(firstCommit);
-    _addWelcomes(record.id, firstCommit.sender, firstCommit.epoch, welcomes);
+    _addWelcomes(record.id, record.createdBy, 1, welcomes); // no envelope: invitees join by Welcome
     _changeCtl.add(null);
   }
 
@@ -129,6 +176,7 @@ class MemoryConversationBackend implements ConversationBackend {
     if (r == null || !r.members.containsKey(commit.sender)) throw StateError('permission-denied');
     if (!r.isAdmin(commit.sender)) throw StateError('permission-denied: only admins commit');
     if (r.epoch != commit.epoch - 1) throw const EpochConflictException();
+    final recipients = _othersThan(commit.sender, r); // the members NOW; new ones join by Welcome
     final members = Map.of(r.members);
     memberChanges.forEach((u, role) => role == null ? members.remove(u) : members[u] = role);
     conversations[r.id] = ConversationRecord(
@@ -138,18 +186,19 @@ class MemoryConversationBackend implements ConversationBackend {
       epoch: commit.epoch,
       members: members,
     );
-    _addEnvelope(commit);
+    _store(commit, recipients);
     _addWelcomes(r.id, commit.sender, commit.epoch, welcomes);
+    _settle(r.id);
     _changeCtl.add(null);
   }
 
   @override
-  Future<void> publishApplication(Envelope message, {required List<String> notifyUids}) async {
+  Future<void> publishApplication(Envelope message) async {
     _maybeFail();
     final r = conversations[message.conversationId];
     if (r == null || !r.members.containsKey(message.sender)) throw StateError('permission-denied');
     if (r.epoch != message.epoch) throw StateError('permission-denied: stale epoch');
-    _addEnvelope(message);
+    _store(message, _othersThan(message.sender, r));
   }
 
   @override
@@ -158,7 +207,7 @@ class MemoryConversationBackend implements ConversationBackend {
     final r = conversations[proposal.conversationId];
     if (r == null || !r.members.containsKey(proposal.sender)) throw StateError('permission-denied');
     if (r.epoch != proposal.epoch) throw StateError('permission-denied: stale epoch');
-    _addEnvelope(proposal);
+    _store(proposal, _othersThan(proposal.sender, r));
   }
 
   @override
@@ -171,6 +220,7 @@ class MemoryConversationBackend implements ConversationBackend {
       epoch: r.epoch,
       members: Map.of(r.members)..remove(uid),
     );
+    _settle(conversationId); // what was only waiting for them can go
     _changeCtl.add(null);
   }
 
@@ -233,10 +283,6 @@ class MemoryConversationBackend implements ConversationBackend {
   }
 
   final Map<String, Set<String>> rejoin = {};
-
-  /// Simulates server-side retention: removes envelopes matching [test].
-  void pruneEnvelopes(String conversationId, bool Function(Envelope) test) =>
-      envelopes[conversationId]?.removeWhere(test);
 
   @override
   Future<void> requestRejoin(String conversationId, String uid) async {

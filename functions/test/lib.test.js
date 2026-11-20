@@ -23,16 +23,16 @@ test('push payload carries no data: generic text only', () => {
 test('dead tokens and retention', () => {
   assert.ok(isDeadToken('messaging/registration-token-not-registered'));
   assert.ok(!isDeadToken('messaging/internal-error'));
-  assert.equal(retentionCutoff(31 * 86400000), 86400000);
+  assert.equal(retentionCutoff(8 * 86400000), 86400000); // 7-day retention
 });
 
-test('messages expire after 30 days, commits after 180', () => {
+test('undelivered envelopes of every kind are dropped after 7 days', () => {
   const day = 86400000;
   const now = 400 * day;
-  assert.equal(shouldPrune({ kind: 'app', ts: now - 31 * day }, now), true);
-  assert.equal(shouldPrune({ kind: 'app', ts: now - 29 * day }, now), false);
-  assert.equal(shouldPrune({ kind: 'commit', ts: now - 31 * day }, now), false);
-  assert.equal(shouldPrune({ kind: 'commit', ts: now - 181 * day }, now), true);
+  for (const kind of ['app', 'commit', 'proposal']) {
+    assert.equal(shouldPrune({ kind, ts: now - 8 * day }, now), true, kind);
+    assert.equal(shouldPrune({ kind, ts: now - 6 * day }, now), false, kind);
+  }
   assert.equal(shouldPrune(null, now), false);
   assert.equal(shouldPrune({ kind: 'app' }, now), false);
 });

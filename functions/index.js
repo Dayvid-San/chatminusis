@@ -1,12 +1,12 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getMessaging } from 'firebase-admin/messaging';
-import { onValueCreated } from 'firebase-functions/v2/database';
+import { onValueCreated, onValueDeleted } from 'firebase-functions/v2/database';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 
-import { ServiceError, claimKeyPackageCore, findByNicknameCore, requireVerified } from './core.js';
+import { ServiceError, claimKeyPackageCore, findByNicknameCore, requireVerified, settleConversation, settleEnvelope } from './core.js';
 import { buildMulticast, collectTokens, isDeadToken, recipientsFor, retentionCutoff, shouldPrune } from './lib.js';
 
 initializeApp();
@@ -45,8 +45,11 @@ export const pruneOldEnvelopes = onSchedule({ schedule: 'every 24 hours', region
   for (const cid of conversations) {
     const old = await db.ref(`mlsMessages/${cid}`).orderByChild('ts').endAt(cutoff).get();
     old.forEach((child) => {
-      // Messages after 30 days; commits are kept for 180 days.
-      if (shouldPrune(child.val(), Date.now())) updates[`mlsMessages/${cid}/${child.key}`] = null;
+      // Safety net: anything still undelivered after the retention period is dropped.
+      if (shouldPrune(child.val(), Date.now())) {
+        updates[`mlsMessages/${cid}/${child.key}`] = null;
+        updates[`acks/${cid}/${child.key}`] = null;
+      }
     });
   }
   const welcomes = (await db.ref('welcomes').get()).val() ?? {};
@@ -90,3 +93,15 @@ export const findByNickname = onCall(
     return { profile: await findByNicknameCore(getDatabase(), caller, request.data?.nickname) };
   }),
 );
+
+/** Carrier: once every member (but the sender) confirmed receipt, the envelope is deleted. */
+export const onAck = onValueCreated({ ref: '/acks/{cid}/{mid}/{uid}', region: 'us-central1' }, async (event) => {
+  const result = await settleEnvelope(getDatabase(), event.params.cid, event.params.mid);
+  logger.info('settle', { result }); // never the ids: the server keeps no trace of who talked to whom
+});
+
+/** Someone left or was removed: envelopes that were only waiting for them can go. */
+export const onMemberGone = onValueDeleted({ ref: '/conversations/{cid}/members/{uid}', region: 'us-central1' }, async (event) => {
+  const deleted = await settleConversation(getDatabase(), event.params.cid);
+  logger.info('swept after a member left', { deleted });
+});

@@ -109,6 +109,12 @@ class MessagingService {
   Timer? _purgeTimer;
   bool _started = false;
 
+  /// Set first thing in [dispose]. Work that was already in flight when the
+  /// service was shut down must not start listening or confirm anything
+  /// afterwards (a lingering listener would keep receiving and confirming
+  /// messages for a service that can no longer store them).
+  bool _disposed = false;
+
   Uint8List get _myId => utf8.encode(uid);
 
   /// Fires whenever conversations or messages change.
@@ -118,6 +124,15 @@ class MessagingService {
   Uint8List get signaturePublicKey => _engine.signaturePublicKey;
 
   ChatCryptoClient get engine => _engine;
+
+  /// Runs [job] on the serial queue without waiting. A failure (say, the disk
+  /// is full) must not crash the app: nothing is confirmed to the carrier
+  /// until it is stored, so the job simply runs again on the next event or
+  /// when the app reopens and the envelopes are replayed.
+  void _enqueue(Future<void> Function() job) {
+    if (_disposed) return;
+    unawaited(_lock.run(job).catchError((Object _) {}));
+  }
 
   // ------------------------------------------------------------ lifecycle
 
@@ -131,16 +146,17 @@ class MessagingService {
       await _purgeExpired();
     });
     await _ensureKeyPackages();
-    _subs.add(_backend.watchWelcomes(uid).listen((w) => _lock.run(() => _onWelcome(w))));
+    _subs.add(_backend.watchWelcomes(uid).listen((w) => _enqueue(() => _onWelcome(w))));
     _subs.add(_backend.watchConversationIds(uid).listen(_onConversationIds));
     for (final c in _convs.values.where((c) => !c.removed)) {
       _watch(c.id);
     }
-    _purgeTimer = Timer.periodic(const Duration(minutes: 1), (_) => _lock.run(_purgeExpired));
+    _purgeTimer = Timer.periodic(const Duration(minutes: 1), (_) => _enqueue(_purgeExpired));
     _emit();
   }
 
   Future<void> dispose() async {
+    _disposed = true;
     _purgeTimer?.cancel();
     for (final t in [..._rejoinTimers.values, ..._gapTimers.values]) {
       t.cancel();
@@ -152,6 +168,8 @@ class MessagingService {
     _envelopeSubs.clear();
     _recordSubs.clear();
     _rejoinSubs.clear();
+    // Let the job that may be running finish, so the saved state is consistent.
+    await _lock.run(() async {}).catchError((Object _) {});
     await _changes.close();
   }
 
@@ -372,9 +390,10 @@ class MessagingService {
   }
 
   void _watch(String id) {
+    if (_disposed) return;
     _recordSubs[id] ??= _backend
         .watchConversation(id)
-        .listen((r) => _lock.run(() => _onRecord(id, r)), onError: (_) => _lock.run(() => _onRecord(id, null)));
+        .listen((r) => _enqueue(() => _onRecord(id, r)), onError: (_) => _enqueue(() => _onRecord(id, null)));
     if (_engine.hasGroup(groupId: _gid(id))) {
       _watchEnvelopes(id);
     } else {
@@ -385,6 +404,7 @@ class MessagingService {
   }
 
   void _scheduleRejoin(String id) {
+    if (_disposed) return;
     if (_rejoinAsked.contains(id)) return;
     _rejoinTimers[id] ??= Timer(rejoinDelay, () {
       _rejoinTimers.remove(id);
@@ -410,13 +430,14 @@ class MessagingService {
   /// the server epoch, the commits in between are gone (retention) and this
   /// device can never catch up by itself.
   void _watchGap(_Conv c) {
+    if (_disposed) return;
     if (!_isBehind(c)) {
       _gapTimers.remove(c.id)?.cancel();
       return;
     }
     _gapTimers[c.id] ??= Timer(gapDelay, () {
       _gapTimers.remove(c.id);
-      unawaited(_lock.run(() => _recoverFromGap(c.id)));
+      _enqueue(() => _recoverFromGap(c.id));
     });
   }
 
@@ -450,10 +471,11 @@ class MessagingService {
   }
 
   void _watchEnvelopes(String id) {
+    if (_disposed) return;
     _rejoinTimers.remove(id)?.cancel();
     _envelopeSubs[id] ??= _backend.watchEnvelopes(id).listen((e) {
       (_buffer[id] ??= []).add(e);
-      _lock.run(() => _drain(id));
+      _enqueue(() => _drain(id));
     });
     _rejoinSubs[id] ??= _backend.watchRejoinRequests(id).listen((uids) {
       for (final other in uids.where((u) => u != uid)) {
@@ -607,10 +629,12 @@ class MessagingService {
     }
     queue.sort((a, b) => a.epoch != b.epoch ? a.epoch.compareTo(b.epoch) : a.id.compareTo(b.id));
     var changed = false;
+    final toAck = <Envelope>[]; // delivered: confirmed to the carrier once safely stored
     while (queue.isNotEmpty && _engine.hasGroup(groupId: gid)) {
       final e = queue.first;
       final local = _engine.epoch(groupId: gid).toInt();
       if (c.processed.contains(e.id)) {
+        toAck.add(e); // seen before (e.g. the confirmation was lost): confirm again
         queue.removeAt(0);
         continue;
       }
@@ -666,15 +690,19 @@ class MessagingService {
         }
         _markProcessed(c, e.id);
       }
+      toAck.add(e);
       queue.removeAt(0);
       changed = true;
     }
     if (!changed) {
+      _confirmDelivery(toAck); // already stored on an earlier run
       _watchGap(c);
       return;
     }
     await _persistEngine();
     await _saveConv(c);
+    // Only now is the message really ours: the server may forget it.
+    _confirmDelivery(toAck);
     _watchGap(c);
     if (!c.removed) {
       await _checkKeys(c);
@@ -702,6 +730,16 @@ class MessagingService {
     } catch (_) {
       // Another admin committed first (the winner's commit covers the same
       // proposals) or we are offline: retried on the next activity.
+    }
+  }
+
+  /// Tells the carrier we have these envelopes. Best effort: if it fails, the
+  /// envelope is still on the server and is confirmed again on the next replay.
+  void _confirmDelivery(List<Envelope> delivered) {
+    if (_disposed) return; // shut down mid-way: leave it on the server rather than risk losing it
+    for (final e in delivered) {
+      if (e.sender == uid) continue; // our own message: nothing to confirm
+      unawaited(_backend.ackEnvelope(e, uid).catchError((Object _) {}));
     }
   }
 
@@ -827,7 +865,6 @@ class MessagingService {
       final out = await _engine.addMembers(groupId: gid, keyPackages: kps);
       await _backend.createConversation(
         record: record,
-        firstCommit: _commitEnvelope(record.id, out),
         welcomes: [for (final u in invitees) WelcomeOut(recipientUid: u, payload: out.welcome!)],
       );
       await _engine.mergePendingCommit(groupId: gid);
@@ -1032,7 +1069,7 @@ class MessagingService {
             kind: EnvelopeKind.application,
             payload: ct,
           );
-          await _backend.publishApplication(env, notifyUids: c.record?.members.keys.toList() ?? const []);
+          await _backend.publishApplication(env);
           _markProcessed(c, env.id);
           if (localText != null) {
             final now = _now().millisecondsSinceEpoch;

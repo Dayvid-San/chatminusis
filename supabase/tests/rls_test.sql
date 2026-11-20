@@ -114,11 +114,11 @@ delete from last_resort_key_packages;
 \echo conversations
 select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
 select create_conversation(:'DIRECT', 'direct', json_build_object(:'A', 'admin', :'B', 'admin')::jsonb,
-  'c1', 'Y29tbWl0', json_build_array(json_build_object('recipient', :'B', 'payload', 'd2VsY29tZQ=='))::jsonb);
-select t_fail(format($$select create_conversation(%L, 'direct', '{}', 'c1', 'x', '[]')$$, :'DIRECT'), 'creator_must_be_admin');
-select t_fail(format($$select create_conversation(%L, 'direct', %L, 'c1', 'x', '[]')$$, :'DIRECT',
+  json_build_array(json_build_object('recipient', :'B', 'payload', 'd2VsY29tZQ=='))::jsonb);
+select t_fail(format($$select create_conversation(%L, 'direct', '{}', '[]')$$, :'DIRECT'), 'creator_must_be_admin');
+select t_fail(format($$select create_conversation(%L, 'direct', %L, '[]')$$, :'DIRECT',
   json_build_object(:'A', 'admin', :'B', 'admin')), 'epoch_conflict');
-select t_fail(format($$select create_conversation('d_22222222-2222-2222-2222-222222222222_33333333', 'direct', %L, 'c1', 'x', '[]')$$,
+select t_fail(format($$select create_conversation('d_22222222-2222-2222-2222-222222222222_33333333', 'direct', %L, '[]')$$,
   json_build_object(:'A', 'admin', :'C', 'admin')), 'invalid_direct');
 -- blocked users cannot pull you in
 select set_config('request.jwt.claims', json_build_object('sub', :'C')::text, false);
@@ -126,12 +126,12 @@ insert into blocks (user_id, blocked_id) values (:'C', :'A');
 select t_count('select * from blocks', 1);
 select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
 select t_count('select * from blocks', 0);
-select t_fail(format($$select create_conversation('d_11111111-1111-1111-1111-111111111111_33333333-3333-3333-3333-333333333333', 'direct', %L, 'c1', 'x', '[]')$$,
+select t_fail(format($$select create_conversation('d_11111111-1111-1111-1111-111111111111_33333333-3333-3333-3333-333333333333', 'direct', %L, '[]')$$,
   json_build_object(:'A', 'admin', :'C', 'admin')), 'blocked');
 
 -- group with alice (admin) and bob
 select create_conversation(:'GROUP', 'group', json_build_object(:'A', 'admin', :'B', 'member')::jsonb,
-  'c1', 'Y29tbWl0', json_build_array(json_build_object('recipient', :'B', 'payload', 'dw=='))::jsonb);
+  json_build_array(json_build_object('recipient', :'B', 'payload', 'dw=='))::jsonb);
 
 \echo reads
 select set_config('request.jwt.claims', json_build_object('sub', :'E')::text, false);
@@ -237,18 +237,84 @@ select t_count('select * from reports', 0);                                    -
 
 reset role;
 
+\echo carrier: deliver and forget
+insert into auth.users values ('55555555-5555-5555-5555-555555555555', 'dave@t');
+delete from blocks;  -- earlier sections left some blocks behind; this one starts clean
+\set D '55555555-5555-5555-5555-555555555555'
+\set CG 'g_carrier000001'
+set role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select create_conversation(:'CG', 'group', json_build_object(:'A', 'admin', :'B', 'member', :'C', 'member')::jsonb, '[]'::jsonb);
+select t_count(format($$select * from mls_messages where conversation_id = %L$$, :'CG'), 0);            -- creation stores no envelope
+
+-- bob sends: the server records who still has to receive it (alice and carol, not bob)
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select publish_application(:'CG', 1, 'k1', 'Y2lwaGVy');
+select t_count(format($$select * from mls_messages where id = 'k1' and cardinality(pending) = 2 and not (%L::uuid = any(pending)) and %L::uuid = any(pending) and %L::uuid = any(pending)$$, :'B', :'A', :'C'), 1);
+select t_fail($$delete from mls_messages where id = 'k1'$$);                                            -- nobody can delete by hand
+select t_fail($$update mls_messages set pending = '{}' where id = 'k1'$$);                              -- nor empty the waiting list
+select ack_envelope(:'CG', 'k1');                                                                        -- bob acks: harmless, not in the list
+select t_count($$select * from mls_messages where id = 'k1'$$, 1);
+
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select ack_envelope(:'CG', 'k1');
+select t_count($$select * from mls_messages where id = 'k1'$$, 1);                                      -- carol has not received it yet
+select ack_envelope(:'CG', 'k1');                                                                        -- twice is harmless
+select set_config('request.jwt.claims', json_build_object('sub', :'C')::text, false);
+select ack_envelope(:'CG', 'k1');
+select t_count($$select * from mls_messages where id = 'k1'$$, 0);                                      -- everyone has it: gone
+
+-- a non-member cannot confirm (or learn anything)
+select set_config('request.jwt.claims', json_build_object('sub', :'E')::text, false);
+select t_fail(format($$select ack_envelope(%L, 'k1')$$, :'CG'), 'not_member');
+
+-- the sender cannot withdraw an undelivered message either
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select publish_application(:'CG', 1, 'k2', 'Y2lwaGVy');
+select t_fail($$delete from mls_messages where id = 'k2'$$);
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select ack_envelope(:'CG', 'k2');
+select t_count($$select * from mls_messages where id = 'k2'$$, 1);                                      -- carol still pending
+-- carol leaves: what was only waiting for her goes away at once
+select set_config('request.jwt.claims', json_build_object('sub', :'C')::text, false);
+delete from conversation_members where conversation_id = :'CG' and user_id = :'C';
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select t_count($$select * from mls_messages where id = 'k2'$$, 0);
+
+-- a commit is for the CURRENT members; the new member joins by Welcome and is not waited for
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select publish_commit(:'CG', 2, 'k3', 'Y29tbWl0', json_build_object(:'D', 'member')::jsonb,
+  json_build_array(json_build_object('recipient', :'D', 'payload', 'dw=='))::jsonb);
+select t_count(format($$select * from mls_messages where id = 'k3' and cardinality(pending) = 1 and %L::uuid = any(pending) and not (%L::uuid = any(pending))$$, :'B', :'D'), 1);
+select set_config('request.jwt.claims', json_build_object('sub', :'B')::text, false);
+select ack_envelope(:'CG', 'k3');
+select t_count($$select * from mls_messages where id = 'k3'$$, 0);
+
+-- removing the only person an envelope was waiting for deletes it in the same step
+select set_config('request.jwt.claims', json_build_object('sub', :'D')::text, false);
+select publish_application(:'CG', 2, 'k4', 'Y2lwaGVy');
+select set_config('request.jwt.claims', json_build_object('sub', :'A')::text, false);
+select ack_envelope(:'CG', 'k4');
+select t_count($$select * from mls_messages where id = 'k4'$$, 1);                                      -- bob still pending
+select publish_commit(:'CG', 3, 'k5', 'Y29tbWl0', json_build_object(:'B', null)::jsonb, '[]'::jsonb);
+select t_count($$select * from mls_messages where id = 'k4'$$, 0);                                      -- bob removed: nothing waits for him
+select t_count($$select * from mls_messages where id = 'k5'$$, 1);                                      -- the commit itself still waits for dave (a current member)
+select t_count(format($$select * from mls_messages where conversation_id = %L and id <> 'k5'$$, :'CG'), 0);
+
+reset role;
+
 \echo retention
-insert into mls_messages (conversation_id, id, sender, epoch, kind, payload, ts) values
-  (:'GROUP', 'old-app', :'A', 1, 'app', 'eA==', now() - interval '31 days'),
-  (:'GROUP', 'new-app', :'A', 1, 'app', 'eA==', now() - interval '29 days'),
-  (:'GROUP', 'old-commit-31', :'A', 1, 'commit', 'eA==', now() - interval '31 days'),
-  (:'GROUP', 'old-commit-181', :'A', 1, 'commit', 'eA==', now() - interval '181 days');
+insert into mls_messages (conversation_id, id, sender, epoch, kind, payload, ts, pending) values
+  (:'GROUP', 'old-app', :'A', 1, 'app', 'eA==', now() - interval '8 days', array[:'B']::uuid[]),
+  (:'GROUP', 'new-app', :'A', 1, 'app', 'eA==', now() - interval '6 days', array[:'B']::uuid[]),
+  (:'GROUP', 'old-commit', :'A', 1, 'commit', 'eA==', now() - interval '8 days', array[:'B']::uuid[]),
+  (:'GROUP', 'new-commit', :'A', 1, 'commit', 'eA==', now() - interval '6 days', array[:'B']::uuid[]);
 select prune_old_data();
-select t_count($$select * from mls_messages where id = 'old-app'$$, 0);
+select t_count($$select * from mls_messages where id in ('old-app', 'old-commit')$$, 0);      -- every kind: 7 days at most
+select t_count($$select * from mls_messages where id in ('new-app', 'new-commit')$$, 2);
 select t_count($$select * from mls_messages where id = 'new-app'$$, 1);
-select t_count($$select * from mls_messages where id = 'old-commit-31'$$, 1);   -- commits live longer
-select t_count($$select * from mls_messages where id = 'old-commit-181'$$, 0);
 set role authenticated;
 select t_fail('select prune_old_data()');                                      -- not callable by users
 reset role;
+
 \echo ALL SUPABASE RLS TESTS PASSED

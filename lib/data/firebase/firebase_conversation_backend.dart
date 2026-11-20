@@ -97,23 +97,18 @@ class FirebaseConversationBackend implements ConversationBackend {
   }
 
   @override
-  Future<void> createConversation({
-    required ConversationRecord record,
-    required Envelope firstCommit,
-    required List<WelcomeOut> welcomes,
-  }) async {
+  Future<void> createConversation({required ConversationRecord record, required List<WelcomeOut> welcomes}) async {
     final u = <String, Object?>{
       'conversations/${record.id}': {
         'type': record.type.name,
         'createdBy': record.createdBy,
         'createdAt': ServerValue.timestamp,
-        'epoch': firstCommit.epoch,
+        'epoch': 1,
         'members': {for (final m in record.members.entries) m.key: m.value.name},
       },
-      'mlsMessages/${record.id}/${firstCommit.id}': _envelope(firstCommit),
       for (final m in record.members.keys) 'userConversations/$m/${record.id}': {'since': ServerValue.timestamp},
     };
-    _addWelcomes(u, record.id, firstCommit.sender, firstCommit.epoch, welcomes);
+    _addWelcomes(u, record.id, record.createdBy, 1, welcomes);
     try {
       await _root.update(u);
     } catch (e) {
@@ -158,8 +153,14 @@ class FirebaseConversationBackend implements ConversationBackend {
   }
 
   @override
-  Future<void> publishApplication(Envelope message, {required List<String> notifyUids}) =>
+  Future<void> publishApplication(Envelope message) =>
       _root.child('mlsMessages/${message.conversationId}/${message.id}').set(_envelope(message));
+
+  /// One flag per member and envelope. A server function deletes the envelope
+  /// once every current member (but the sender) has confirmed; clients can't delete.
+  @override
+  Future<void> ackEnvelope(Envelope envelope, String uid) =>
+      _root.child('acks/${envelope.conversationId}/${envelope.id}/$uid').set(true);
 
   @override
   Future<void> publishProposal(Envelope proposal) =>

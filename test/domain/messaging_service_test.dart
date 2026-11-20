@@ -3,6 +3,7 @@
 //   cargo build --manifest-path packages/chat_crypto_ffi/rust/Cargo.toml
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
@@ -86,7 +87,7 @@ void main() {
     expect(texts(alice, id), ['oi bob, segredo 1234', 'oi alice']);
     expect(alice.messages(id).first.outgoing, isTrue);
     expect(bob.messages(id).first.outgoing, isFalse);
-    for (final e in server.envelopes[id]!) {
+    for (final e in server.publishLog.where((e) => e.conversationId == id)) {
       expect(utf8.decode(e.payload, allowMalformed: true), isNot(contains('segredo')));
     }
     // Starting again returns the same conversation.
@@ -394,7 +395,10 @@ void main() {
       server.keyPackages.remove('carol');
       carolReset = await user('carol');
       await eventually(() => carolReset.conversation(id)?.pendingWelcome == false, reason: 'repaired');
-      final epochs = server.envelopes[id]!.where((e) => e.kind == EnvelopeKind.commit).map((e) => e.epoch).toList();
+      final epochs = server.publishLog
+          .where((e) => e.conversationId == id && e.kind == EnvelopeKind.commit)
+          .map((e) => e.epoch)
+          .toList();
       expect(epochs.toSet().length, epochs.length, reason: 'each epoch committed exactly once');
       expect(alice.conversation(id)!.memberUids.where((m) => m == 'carol'), hasLength(1));
     });
@@ -506,7 +510,7 @@ void main() {
         );
         // The server only sees the label, so it accepts these...
         kind == EnvelopeKind.application
-            ? await server.publishApplication(disguised, notifyUids: const [])
+            ? await server.publishApplication(disguised)
             : await server.publishProposal(disguised);
       }
       // ...but the receivers check the content and apply nothing.
@@ -529,7 +533,7 @@ void main() {
       final (alice, bob, _, id) = await team();
       final before = alice.engine.epoch(groupId: utf8.encode(id)).toInt();
       await bob.rotateKeys(id); // bob cannot commit: he sends a proposal
-      expect(server.envelopes[id]!.any((e) => e.kind == EnvelopeKind.proposal && e.sender == 'bob'), isTrue);
+      expect(server.publishLog.any((e) => e.kind == EnvelopeKind.proposal && e.sender == 'bob'), isTrue);
       await eventually(
         () => alice.engine.epoch(groupId: utf8.encode(id)).toInt() > before,
         reason: 'the admin committed bob\'s proposal',
@@ -538,11 +542,178 @@ void main() {
         () => bob.engine.epoch(groupId: utf8.encode(id)) == alice.engine.epoch(groupId: utf8.encode(id)),
         reason: 'bob followed',
       );
-      expect(server.envelopes[id]!.where((e) => e.kind == EnvelopeKind.commit && e.sender == 'bob'), isEmpty);
+      expect(server.publishLog.where((e) => e.kind == EnvelopeKind.commit && e.sender == 'bob'), isEmpty);
       expect(alice.engine.hasPendingProposals(groupId: utf8.encode(id)), isFalse, reason: 'consumed');
 
       await bob.send(id, 'chaves novas');
       await eventually(() => texts(alice, id).contains('chaves novas'));
     });
   });
+
+  group('carrier: the server forgets what it delivered', () {
+    /// What the server still holds of a conversation's traffic.
+    int held(String id) => server.envelopes[id]?.length ?? 0;
+
+    /// The Welcome is deleted only at the very end of joining, after the new state is saved.
+    Future<void> joined(String uid, MessagingService s, String id) => eventually(
+      () => (server.welcomes[uid] ?? []).isEmpty && s.conversation(id)?.pendingWelcome == false,
+      reason: '$uid finished joining',
+    );
+
+    test('after delivery nothing is left on the server: no message, no ciphertext, no history', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+
+      await alice.send(id, 'primeira');
+      await eventually(() => texts(bob, id).contains('primeira'));
+      await bob.send(id, 'segunda');
+      await eventually(() => texts(alice, id).contains('segunda'));
+
+      await eventually(() => held(id) == 0, reason: 'the carrier forgot both envelopes');
+      // The messages exist, but only on the devices.
+      expect(texts(alice, id), ['primeira', 'segunda']);
+      expect(texts(bob, id), ['primeira', 'segunda']);
+      expect(
+        server.publishLog.where((e) => e.conversationId == id && e.kind == EnvelopeKind.application),
+        hasLength(2),
+      );
+    });
+
+    test('an offline recipient keeps the message waiting, and it is forgotten once they have it', () async {
+      final alice = await user('alice');
+      final bobStore = MemorySecureStore();
+      var bob = await user('bob', store: bobStore);
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+
+      await bob.dispose();
+      services.remove(bob);
+      await alice.send(id, 'enquanto você estava fora');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(held(id), 1, reason: 'waiting for bob');
+
+      bob = await user('bob', store: bobStore);
+      await eventually(() => texts(bob, id).contains('enquanto você estava fora'));
+      await eventually(() => held(id) == 0, reason: 'delivered, so forgotten');
+    });
+
+    test('in a group the message waits for EVERY member and is forgotten only after the last one', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final carolStore = MemorySecureStore();
+      var carol = await user('carol', store: carolStore);
+      final id = await alice.createGroup('Turma', ['bob', 'carol']);
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false && carol.conversation(id)?.title == 'Turma');
+      await eventually(() => held(id) == 0, reason: 'the title message was delivered to everybody');
+
+      await carol.dispose();
+      services.remove(carol);
+      await alice.send(id, 'para todos');
+      await eventually(() => texts(bob, id).contains('para todos'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(held(id), 1, reason: 'bob has it, carol does not: still waiting');
+
+      carol = await user('carol', store: carolStore);
+      await eventually(() => texts(carol, id).contains('para todos'));
+      await eventually(() => held(id) == 0, reason: 'everybody has it now');
+    });
+
+    test('someone who leaves no longer holds a message back', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final carolStore = MemorySecureStore();
+      var carol = await user('carol', store: carolStore);
+      final id = await alice.createGroup('Turma', ['bob', 'carol']);
+      await eventually(() => carol.conversation(id)?.title == 'Turma' && bob.conversation(id)?.pendingWelcome == false);
+      await eventually(() => held(id) == 0);
+
+      await carol.dispose();
+      services.remove(carol);
+      await alice.send(id, 'carol nunca vai receber');
+      await eventually(() => texts(bob, id).contains('carol nunca vai receber'));
+      await eventually(
+        () => server.waitingFor(id).length == 1 && server.waitingFor(id).contains('carol'),
+        reason: 'only carol is missing',
+      );
+      expect(held(id), 1);
+
+      await server.leaveConversation(uid: 'carol', conversationId: id);
+      expect(held(id), 0, reason: 'only carol was missing, and she is gone');
+    });
+
+    test('safety net: an envelope nobody picked up expires, and a late member rejoins without it', () async {
+      final alice = await user('alice');
+      final bobStore = MemorySecureStore();
+      var bob = await user('bob', store: bobStore);
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+
+      await bob.dispose();
+      services.remove(bob);
+      await alice.send(id, 'ninguém buscou');
+      expect(held(id), 1);
+      server.pruneEnvelopes(id, (_) => true); // 7 days passed
+
+      expect(held(id), 0);
+      bob = await user('bob', store: bobStore);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(texts(bob, id), isNot(contains('ninguém buscou')), reason: 'lost for good: no copy anywhere else');
+      await alice.send(id, 'depois');
+      await eventually(() => texts(bob, id).contains('depois'));
+    });
+
+    test('a message is NEVER confirmed before it is safely stored on the device', () async {
+      final alice = await user('alice');
+      final bobStore = FlakyStore();
+      var bob = await user('bob', store: bobStore);
+      final id = await alice.startDirect('bob');
+      await joined('bob', bob, id); // the join itself must be fully saved before the disk "fills up"
+
+      bobStore.failWrites = true; // the disk is full
+      await alice.send(id, 'não pode se perder');
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(held(id), 1, reason: 'bob could not store it, so the carrier must keep it');
+
+      await bob.dispose();
+      services.remove(bob);
+      bobStore.failWrites = false;
+      bob = await user('bob', store: bobStore);
+      await eventually(() => texts(bob, id).contains('não pode se perder'), reason: 'delivered after the restart');
+      await eventually(() => held(id) == 0, reason: 'and only now forgotten');
+    });
+
+    test('an app that crashed after storing but before confirming confirms again, without duplicates', () async {
+      final alice = await user('alice');
+      final bobStore = MemorySecureStore();
+      var bob = await user('bob', store: bobStore);
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+
+      server.dropAcks = true; // the confirmations never reach the server
+      await alice.send(id, 'uma vez só');
+      await eventually(() => texts(bob, id).contains('uma vez só'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(held(id), 1, reason: 'stored by bob, but the server was not told');
+
+      await bob.dispose();
+      services.remove(bob);
+      server.dropAcks = false;
+      bob = await user('bob', store: bobStore);
+      await eventually(() => held(id) == 0, reason: 'the replay is confirmed again');
+      expect(texts(bob, id).where((t) => t == 'uma vez só'), hasLength(1), reason: 'no duplicate');
+    });
+  });
+}
+
+/// A store whose writes can be made to fail (a full disk).
+class FlakyStore extends MemorySecureStore {
+  bool failWrites = false;
+
+  @override
+  Future<void> write(String name, Uint8List value) {
+    if (failWrites) throw const FileSystemException('no space left on device');
+    return super.write(name, value);
+  }
 }
