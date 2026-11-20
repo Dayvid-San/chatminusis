@@ -1103,6 +1103,27 @@ class MessagingService {
   /// Removes expired disappearing messages now (also runs every minute).
   Future<void> purgeExpiredNow() => _lock.run(_purgeExpired);
 
+  /// Deletes one message from this device. There is no copy anywhere else: the
+  /// server keeps nothing and the other person's copy is theirs to keep or lose.
+  Future<void> deleteMessage(String conversationId, String messageId) => _lock.run(() async {
+    final c = _convs[conversationId];
+    if (c == null) return;
+    final before = c.messages.length;
+    c.messages.removeWhere((m) => m.id == messageId);
+    if (c.messages.length != before) await _saveConv(c);
+    _emit();
+  });
+
+  /// Deletes this conversation's whole history from this device (the group and
+  /// its keys stay, so it keeps working for new messages).
+  Future<void> clearHistory(String conversationId) => _lock.run(() async {
+    final c = _convs[conversationId];
+    if (c == null) return;
+    c.messages.clear();
+    await _saveConv(c);
+    _emit();
+  });
+
   Future<void> _purgeExpired() async {
     final now = _now().millisecondsSinceEpoch;
     for (final c in _convs.values) {

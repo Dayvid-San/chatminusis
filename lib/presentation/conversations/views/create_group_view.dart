@@ -5,6 +5,7 @@ import '../../../domain/entities/user_profile.dart';
 import '../../../domain/services/messaging_service.dart';
 import '../view_models/conversations_view_model.dart';
 import 'nickname_picker.dart';
+import '../../shared_widgets/private_input.dart';
 
 /// Pops with the new conversation id.
 class CreateGroupView extends StatefulWidget {
@@ -60,7 +61,7 @@ class _CreateGroupViewState extends State<CreateGroupView> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          TextField(
+          PrivateTextField(
             controller: _title,
             maxLength: 60,
             decoration: const InputDecoration(

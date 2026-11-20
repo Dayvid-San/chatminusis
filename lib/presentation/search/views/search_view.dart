@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../domain/entities/user_profile.dart';
 import '../view_models/search_view_model.dart';
+import '../../shared_widgets/private_input.dart';
 
 /// Find a person by their exact nickname.
 class SearchView extends StatefulWidget {
@@ -30,7 +31,7 @@ class _SearchViewState extends State<SearchView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Denunciar @${p.nickname}'),
-        content: TextField(
+        content: PrivateTextField(
           controller: reason,
           maxLength: 500,
           maxLines: 3,
@@ -59,9 +60,8 @@ class _SearchViewState extends State<SearchView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            PrivateTextField(
               controller: _query,
-              autocorrect: false,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 labelText: 'Nickname exato',

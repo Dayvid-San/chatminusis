@@ -101,7 +101,7 @@ class SafetyNumberView extends StatelessWidget {
                 child: QrImageView(data: 'chatminusis-safety:v1:$number', size: 200, backgroundColor: Colors.white),
               ),
               const SizedBox(height: 16),
-              SelectableText(
+              Text(
                 format(number),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 18, letterSpacing: 1.5, height: 1.6),

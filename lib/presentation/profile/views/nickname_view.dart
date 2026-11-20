@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/utils/nickname.dart';
 import '../../../domain/entities/user_profile.dart';
 import '../view_models/profile_view_model.dart';
+import '../../shared_widgets/private_input.dart';
 
 /// First-time nickname setup (mandatory) and later editing.
 class NicknameView extends StatefulWidget {
@@ -56,9 +57,8 @@ class _NicknameViewState extends State<NicknameView> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 20),
-                    TextFormField(
+                    PrivateTextFormField(
                       controller: _nick,
-                      autocorrect: false,
                       decoration: const InputDecoration(
                         labelText: 'Nickname',
                         prefixText: '@',
@@ -67,7 +67,7 @@ class _NicknameViewState extends State<NicknameView> {
                       validator: (v) => Nickname.validate(Nickname.normalize(v ?? '')),
                     ),
                     const SizedBox(height: 14),
-                    TextFormField(
+                    PrivateTextFormField(
                       controller: _name,
                       maxLength: 30,
                       decoration: const InputDecoration(labelText: 'Nome de exibição', border: OutlineInputBorder()),

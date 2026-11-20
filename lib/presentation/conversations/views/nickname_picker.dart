@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/utils/nickname.dart';
 import '../../../domain/entities/user_profile.dart';
+import '../../shared_widgets/private_input.dart';
 
 /// Asks for an exact nickname and resolves it. Returns null if cancelled or not found.
 Future<UserProfile?> pickByNickname(
@@ -14,10 +15,9 @@ Future<UserProfile?> pickByNickname(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(title),
-      content: TextField(
+      content: PrivateTextField(
         controller: ctl,
         autofocus: true,
-        autocorrect: false,
         decoration: const InputDecoration(labelText: 'Nickname exato', prefixText: '@'),
         onSubmitted: (v) => Navigator.pop(ctx, v),
       ),

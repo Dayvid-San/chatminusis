@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../view_models/conversations_view_model.dart';
 import 'nickname_picker.dart';
+import '../../shared_widgets/private_input.dart';
 
 class MembersView extends StatelessWidget {
   const MembersView({super.key, required this.conversationId});
@@ -29,7 +30,7 @@ class MembersView extends StatelessWidget {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Nome do grupo'),
-          content: TextField(controller: ctl, maxLength: 60, autofocus: true),
+          content: PrivateTextField(controller: ctl, maxLength: 60, autofocus: true),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
             TextButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Salvar')),

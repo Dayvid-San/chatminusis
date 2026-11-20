@@ -35,15 +35,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
-
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
+    <!-- Deliberately NO <queries> / PROCESS_TEXT (it is in Flutter's default template): with it the
+         text selection menu lists other apps (Translate, Search...) that would receive the text.
+         test/privacy_guardrails_test.dart fails if it comes back. -->
 </manifest>
