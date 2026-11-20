@@ -5,7 +5,7 @@ Chat privado para Android e iOS com **criptografia ponta a ponta** em conversas 
 - Protocolo **MLS (RFC 9420)** via OpenMLS, em Rust (`rust/chat_crypto`), exposto ao Flutter por `packages/chat_crypto_ffi`.
 - **Modelo carteiro:** o servidor (Firebase ou Supabase) só leva envelopes cifrados e **os apaga assim que todos receberam**. Não há histórico nem backup no servidor: as mensagens existem só nos aparelhos, e cada pessoa guarda ou perde as suas.
 - O app não entrega as mensagens a outros apps (teclado, compartilhar, backups do sistema, área de transferência); só "Copiar mensagem", por escolha da pessoa.
-- **Nada é apagado sozinho:** só a própria pessoa apaga mensagens do seu aparelho. Cada conversa pode definir um tempo de visualização: depois dele, o que você recebe fica oculto (mas guardado) e dá para ver de novo.
+- **Nada é apagado sozinho:** só a própria pessoa apaga mensagens do seu aparelho. Cada conversa tem um tempo de visualização combinado entre os membros (padrão 7 dias): depois dele, o que você recebe fica oculto (mas guardado), e para ver de novo quem enviou precisa aprovar.
 - Busca de pessoas apenas por **nickname exato**; verificação por número de segurança.
 
 ## Documentação

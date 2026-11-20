@@ -84,6 +84,7 @@ class DecryptedMessage {
     required this.outgoing,
     this.viewedUntil,
     this.hidden = false,
+    this.reveal,
   });
 
   final String id;
@@ -101,16 +102,22 @@ class DecryptedMessage {
   /// window has run out for this message. A hidden message carries no text.
   final bool hidden;
 
-  DecryptedMessage copyWith({int? viewedUntil, bool? hidden, String? text}) => DecryptedMessage(
-    id: id,
-    conversationId: conversationId,
-    senderUid: senderUid,
-    text: text ?? this.text,
-    timestamp: timestamp,
-    outgoing: outgoing,
-    viewedUntil: viewedUntil ?? this.viewedUntil,
-    hidden: hidden ?? this.hidden,
-  );
+  /// A hidden message the receiver asked to see again: `req` while waiting for
+  /// the sender's answer, `den` once the sender refused. Stored.
+  final String? reveal;
+
+  DecryptedMessage copyWith({int? viewedUntil, bool? hidden, String? text, String? reveal, bool clearReveal = false}) =>
+      DecryptedMessage(
+        id: id,
+        conversationId: conversationId,
+        senderUid: senderUid,
+        text: text ?? this.text,
+        timestamp: timestamp,
+        outgoing: outgoing,
+        viewedUntil: viewedUntil ?? this.viewedUntil,
+        hidden: hidden ?? this.hidden,
+        reveal: clearReveal ? null : reveal ?? this.reveal,
+      );
 
   Map<String, Object?> toJson() => {
     'id': id,
@@ -120,6 +127,7 @@ class DecryptedMessage {
     'ts': timestamp,
     'o': outgoing,
     if (viewedUntil != null) 'v': viewedUntil,
+    if (reveal != null) 'rv': reveal,
   };
 
   factory DecryptedMessage.fromJson(Map<String, Object?> j) => DecryptedMessage(
@@ -130,6 +138,7 @@ class DecryptedMessage {
     timestamp: j['ts'] as int,
     outgoing: j['o'] as bool,
     viewedUntil: j['v'] as int?,
+    reveal: j['rv'] as String?,
   );
 }
 
@@ -146,6 +155,8 @@ class ConversationSummary {
     this.membershipMismatch = false,
     this.keyChanged = false,
     this.visibilityWindow,
+    this.visibilityProposal,
+    this.revealRequests = const [],
     this.ended = false,
   });
 
@@ -173,7 +184,62 @@ class ConversationSummary {
   /// whole conversation. Null: messages are never hidden.
   final Duration? visibilityWindow;
 
+  /// A change of the window that the members are still agreeing on.
+  final VisibilityProposal? visibilityProposal;
+
+  /// People asking to see again a message of mine that they can no longer see.
+  /// I decide, one by one.
+  final List<RevealRequest> revealRequests;
+
   /// This device left or was removed: the history stays here (only the user
   /// deletes it) but nothing new can be sent or received.
   final bool ended;
+}
+
+/// A proposal to change the conversation's visibility window. It takes effect
+/// only when every current member accepted it; otherwise the window stays.
+class VisibilityProposal {
+  const VisibilityProposal({
+    required this.id,
+    required this.seconds,
+    required this.proposer,
+    required this.acks,
+    required this.members,
+  });
+
+  final String id;
+
+  /// 0 means "never hide".
+  final int seconds;
+  final String proposer;
+
+  /// Members who accepted (the proposer counts).
+  final Set<String> acks;
+
+  /// The members when it was proposed: if they change, the proposal is dropped.
+  final Set<String> members;
+
+  VisibilityProposal withAck(String uid) =>
+      VisibilityProposal(id: id, seconds: seconds, proposer: proposer, acks: {...acks, uid}, members: members);
+
+  Map<String, Object?> toJson() => {'id': id, 's': seconds, 'p': proposer, 'a': acks.toList(), 'm': members.toList()};
+
+  factory VisibilityProposal.fromJson(Map<String, Object?> j) => VisibilityProposal(
+    id: j['id'] as String,
+    seconds: j['s'] as int,
+    proposer: j['p'] as String,
+    acks: (j['a'] as List).cast<String>().toSet(),
+    members: (j['m'] as List).cast<String>().toSet(),
+  );
+}
+
+/// [requester] asks to see again the message [messageId] that I sent.
+class RevealRequest {
+  const RevealRequest({required this.messageId, required this.requester, this.text = ''});
+
+  final String messageId;
+  final String requester;
+
+  /// My own message's text (filled in when read from the service).
+  final String text;
 }

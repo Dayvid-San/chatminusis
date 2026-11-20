@@ -81,7 +81,14 @@ class MessageBubble extends StatelessWidget {
 
 /// The bubble shape, name label and alignment shared by every kind of bubble.
 class BubbleFrame extends StatelessWidget {
-  const BubbleFrame({super.key, required this.isMine, required this.child, this.senderName, this.onLongPress, this.onTap});
+  const BubbleFrame({
+    super.key,
+    required this.isMine,
+    required this.child,
+    this.senderName,
+    this.onLongPress,
+    this.onTap,
+  });
 
   final bool isMine;
   final String? senderName;

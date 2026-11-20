@@ -175,6 +175,9 @@ class HomeView extends StatelessWidget {
                 ),
                 trailing: c.membershipMismatch || c.keyChanged
                     ? const Icon(Icons.warning_amber, color: Colors.orange)
+                    : c.revealRequests.isNotEmpty ||
+                          (c.visibilityProposal != null && !c.visibilityProposal!.acks.contains(vm.myUid))
+                    ? const Icon(Icons.notifications_active_outlined, color: Colors.orange)
                     : null,
                 onTap: () => _open(context, c.id),
                 onLongPress: c.ended ? () => _deleteEnded(context, vm, c.id) : null,

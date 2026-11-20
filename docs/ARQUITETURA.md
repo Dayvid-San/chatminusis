@@ -84,16 +84,31 @@ máquina, não só mover código. Os testes de ponta a ponta (40, com a bibliote
 
 ### Janela de visibilidade (por conversa)
 
-- Cada conversa tem uma janela (ou nenhuma). Ela vale para **todos** os participantes e é definida por quem administra
-  (na conversa 1:1, qualquer um dos dois). Viaja cifrada, como o título do grupo, e é reenviada a quem entra depois.
-  O receptor confere o papel: um membro comum que forje o pacote é ignorado.
-- Vale **só para o que o receptor recebe**. As próprias mensagens nunca ficam ocultas, nem os avisos do sistema.
-- O relógio de uma mensagem recebida começa na **primeira vez que ela aparece na tela**, não na chegada. Acabado o tempo, a
-  mensagem fica **oculta**: some o texto da tela e da prévia na lista. Ela continua guardada no aparelho.
-- "**Ver de novo**": tocar na mensagem oculta a mostra por mais uma janela. É local: não pede nada ao remetente.
-- Ligar a janela numa conversa que já tem mensagens dá a elas uma janela contada a partir daquele momento. Desligar mostra tudo.
-- Limite honesto: ocultar é **proteção de tela**, não destruição. Quem tem o aparelho desbloqueado e o app aberto pode tocar
-  em "ver de novo". O texto continua no cofre cifrado, e a outra pessoa pode ter copiado ou fotografado antes.
+- **Padrão: 7 dias.** Cada conversa começa com essa janela. Quem recebe uma mensagem a vê por 7 dias a partir da primeira
+  vez que ela aparece na tela; depois ela fica **oculta**.
+- **Os membros decidem juntos.** Qualquer membro **propõe** outro tempo (ou "sempre visíveis"). A proposta só vale quando
+  **todos os membros atuais aceitarem**. Uma recusa cancela a proposta e o tempo continua como estava. Sem acordo, fica em 7 dias.
+  Se os membros mudam enquanto há uma proposta pendente (alguém entra ou sai), ela é descartada e precisa ser refeita.
+  Quem entra depois recebe o tempo combinado de um admin, uma única vez; um aparelho que já está na conversa ignora esse aviso.
+- Tudo viaja cifrado (proposta, aceite, recusa). O servidor não vê nem o tempo.
+- Vale **só para o que o receptor recebe**. As próprias mensagens e os avisos do sistema nunca ficam ocultos.
+- O relógio de uma mensagem recebida começa na **primeira vez que ela aparece na tela**, não na chegada. Oculta, ela some da
+  tela e da prévia da lista, mas **continua guardada** no aparelho.
+
+### Pedir para ver de novo (o remetente decide)
+
+1. O receptor toca na mensagem oculta: o app envia, cifrado, um **pedido** ao autor. A mensagem continua oculta e mostra
+   "aguardando aprovação".
+2. O autor vê o pedido **dentro do app**, com o texto da própria mensagem, e escolhe **Permitir** ou **Negar** (o ícone de sino
+   aparece na lista de conversas). O aviso do sistema (push) continua genérico, "Nova mensagem", sem dizer quem pediu nem o quê.
+3. Se permitir, a mensagem volta **só para quem pediu**, pelo tempo da janela da conversa, e depois oculta de novo. Se negar,
+   continua oculta e a pessoa pode pedir outra vez.
+4. Só o **autor** da mensagem aprova: a resposta é conferida pela assinatura MLS, então outro membro não consegue se aprovar.
+5. Precisa do autor online em algum momento: se ele sair da conversa ou não abrir o app, o pedido fica esperando.
+
+- Ligar/desligar: "sempre visíveis" é uma opção que os membros podem combinar; aí nada fica oculto e não há pedidos.
+- Limite honesto: ocultar é **proteção de tela**, não destruição. O texto continua no cofre cifrado, e a outra pessoa pode
+  ter copiado ou fotografado antes.
 
 ## 6. Como acrescentar algo
 

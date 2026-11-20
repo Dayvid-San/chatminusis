@@ -2,22 +2,20 @@ import 'package:flutter/material.dart';
 
 import 'message_bubble.dart';
 
-/// Placeholder for a message that is no longer visible. Shows no text; tapping
-/// it asks to see the message again.
+/// Placeholder for a message that is no longer visible. Shows no text, only
+/// [label] (say what happens next). Tapping it calls [onTap], if given.
 class HiddenMessageBubble extends StatelessWidget {
-  const HiddenMessageBubble({super.key, required this.onReveal, this.senderName, this.revealFor});
+  const HiddenMessageBubble({super.key, required this.label, this.onTap, this.senderName});
 
-  final VoidCallback onReveal;
+  final String label;
+  final VoidCallback? onTap;
   final String? senderName;
-
-  /// How long it stays visible after being revealed, e.g. "30 s".
-  final String? revealFor;
 
   @override
   Widget build(BuildContext context) => BubbleFrame(
     isMine: false,
     senderName: senderName,
-    onTap: onReveal,
+    onTap: onTap,
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -25,7 +23,7 @@ class HiddenMessageBubble extends StatelessWidget {
         const SizedBox(width: 8),
         Flexible(
           child: Text(
-            revealFor == null ? 'Mensagem oculta. Toque para ver de novo' : 'Mensagem oculta. Toque para ver por $revealFor',
+            label,
             style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13, fontStyle: FontStyle.italic),
           ),
         ),

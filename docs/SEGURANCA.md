@@ -44,7 +44,7 @@ ser atualizado a cada mudança sensível.
 |---|---|---|
 | Núcleo MLS (Rust) | Sigilo, adulteração, replay, membro removido, entrada tardia, apagamento de chaves antigas, corrida de commits, persistência, uso único de KeyPackage, ciphersuite única | 41 (`cargo test`, inclui a suíte híbrida de rascunho só nos testes) |
 | Ponte Dart↔Rust | Mesmas operações chamadas do Dart pela FFI | 3 |
-| Serviço de mensagens | Fluxos completos com a biblioteca real: 1:1, grupos, admin, rotação concorrente, reinício, saída, verificação de chaves, reentrada, **carteiro** (esquece o entregue, espera o offline, só confirma depois de gravar), apagar histórico, **janela de visibilidade** (oculta sem apagar, ver de novo, papel de quem define), conversa encerrada preservada | 40 |
+| Serviço de mensagens | Fluxos completos com a biblioteca real: 1:1, grupos, admin, rotação concorrente, reinício, saída, verificação de chaves, reentrada, **carteiro** (esquece o entregue, espera o offline, só confirma depois de gravar), apagar histórico, **janela de visibilidade** (padrão de 7 dias, proposta que exige o aceite de todos, recusa, membro novo, pacotes forjados), **pedido de ver de novo** (só o autor aprova, só para quem pediu), conversa encerrada preservada | 44 |
 | Guardas de privacidade | Lêem o código do app e de `components/`: sem logs, uma única escrita na área de transferência, sem compartilhar/análise, manifest e plist travados | 16 |
 | Componentes (`components/`) | Teclado/corretor/autofill desligados, menu de seleção reduzido, copiar só pelo menu da mensagem, balão oculto, confirmação, reconstrução no prazo | 16 |
 | Arquitetura | Fronteiras entre módulos e camadas ([`ARQUITETURA.md`](ARQUITETURA.md)) | 7 |
