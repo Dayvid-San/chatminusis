@@ -6,7 +6,14 @@ import 'package:chat_crypto_ffi/chat_crypto_ffi.dart';
 
 import 'package:myapp/features/messaging/domain/conversation.dart';
 import 'package:myapp/features/messaging/domain/conversation_backend.dart';
+import 'package:myapp/features/messaging/domain/conversation_state.dart';
+import 'package:myapp/features/messaging/domain/identity_pins.dart';
+import 'package:myapp/features/messaging/domain/key_package_pool.dart';
+import 'package:myapp/features/messaging/domain/serial_queue.dart';
+import 'package:myapp/features/messaging/domain/visibility_policy.dart';
 import 'package:myapp/features/security/domain/secure_store.dart';
+
+export 'package:myapp/features/messaging/domain/identity_pins.dart' show KeyStatus;
 
 class NoKeyPackagesException implements Exception {
   const NoKeyPackagesException(this.uids);
@@ -20,36 +27,11 @@ class NotAllowedException implements Exception {
   final String reason;
 }
 
-/// Trust state of a contact's identity key on this device.
-enum KeyStatus {
-  /// Never seen in any conversation.
-  unknown,
-
-  /// Pinned on first sight (trust on first use), not verified in person.
-  pinned,
-
-  /// Safety number confirmed by the user.
-  verified,
-
-  /// Differs from the pinned key: reinstall, new phone, or an attack.
-  changed,
-}
-
 /// Longest visibility window a conversation may set.
 const maxVisibilityWindow = Duration(days: 30);
 
 /// Maximum members per group (decision pending with the Owner; default 256).
 const maxGroupMembers = 256;
-
-/// Keeps this many KeyPackages published so others can start conversations.
-const _keyPackageTarget = 20;
-const _keyPackageLowWater = 8;
-
-/// KeyPackages expire (about 90 days). Replace the whole pool well before.
-const _poolMaxAge = Duration(days: 45);
-
-/// The reusable last-resort KeyPackage is renewed this often.
-const _lastResortMaxAge = Duration(days: 30);
 
 /// Rotate own keys in a conversation (self-update commit) after this long.
 const _rotationInterval = Duration(days: 7);
@@ -94,8 +76,24 @@ class MessagingService {
 
   late ChatCryptoClient _engine;
   late Uint8List _stateKey;
-  final Map<String, _Conv> _convs = {};
-  final Map<String, _Pin> _pins = {};
+  late final _conversations = ConversationStore(_store);
+  late final _pins = IdentityPins(_store);
+  late final _keyPackages = KeyPackagePool(
+    uid: uid,
+    backend: _backend,
+    store: _store,
+    now: _now,
+    generate: (count) => _lock.run(() async {
+      final kps = await _engine.generateKeyPackages(count: count);
+      await _persistEngine(); // private parts must be saved before publishing
+      return kps;
+    }),
+    generateLastResort: () => _lock.run(() async {
+      final kp = await _engine.generateLastResortKeyPackage();
+      await _persistEngine();
+      return kp;
+    }),
+  );
   final Map<String, List<Envelope>> _buffer = {};
   final Map<String, StreamSubscription<Envelope>> _envelopeSubs = {};
   final Map<String, StreamSubscription<ConversationRecord?>> _recordSubs = {};
@@ -108,7 +106,7 @@ class MessagingService {
   final Set<String> _rejoinAsked = {};
   final List<StreamSubscription<Object?>> _subs = [];
   final _changes = StreamController<void>.broadcast();
-  final _lock = _Mutex();
+  final _lock = SerialQueue();
   bool _started = false;
 
   /// Set first thing in [dispose]. Work that was already in flight when the
@@ -143,13 +141,13 @@ class MessagingService {
     _started = true;
     await _lock.run(() async {
       await _loadOrCreateEngine();
-      await _loadConversations();
-      await _loadPins();
+      await _conversations.load();
+      await _pins.load();
     });
-    await _ensureKeyPackages();
+    await _keyPackages.ensure();
     _subs.add(_backend.watchWelcomes(uid).listen((w) => _enqueue(() => _onWelcome(w))));
     _subs.add(_backend.watchConversationIds(uid).listen(_onConversationIds));
-    for (final c in _convs.values.where((c) => !c.removed)) {
+    for (final c in _conversations.all.values.where((c) => !c.removed)) {
       _watch(c.id);
     }
     _emit();
@@ -195,163 +193,84 @@ class MessagingService {
     await _store.write('mls_state', await _engine.exportState(key: _stateKey));
   }
 
-  Future<int?> _readInt(String name) async {
-    final raw = await _store.read(name);
-    return raw == null ? null : int.tryParse(utf8.decode(raw));
-  }
-
-  Future<void> _writeInt(String name, int value) => _store.write(name, utf8.encode('$value'));
-
-  /// Keeps single-use KeyPackages and the last-resort one published and fresh.
-  Future<void> _ensureKeyPackages() async {
-    final nowMs = _now().millisecondsSinceEpoch;
-    final poolAt = await _readInt('kp_pool_at');
-    final stale = poolAt != null && nowMs - poolAt > _poolMaxAge.inMilliseconds;
-    if (stale) await _backend.clearKeyPackages(uid); // pool and last resort: both are about to expire
-
-    final count = stale ? 0 : await _backend.countKeyPackages(uid);
-    if (count < _keyPackageLowWater) {
-      final kps = await _lock.run(() async {
-        final kps = await _engine.generateKeyPackages(count: _keyPackageTarget - count);
-        await _persistEngine(); // private parts must be saved before publishing
-        return kps;
-      });
-      await _backend.publishKeyPackages(uid, kps);
-      if (stale || poolAt == null) await _writeInt('kp_pool_at', nowMs);
-    }
-
-    final lastAt = await _readInt('last_resort_at');
-    if (stale || lastAt == null || nowMs - lastAt > _lastResortMaxAge.inMilliseconds) {
-      final kp = await _lock.run(() async {
-        final kp = await _engine.generateLastResortKeyPackage();
-        await _persistEngine();
-        return kp;
-      });
-      await _backend.publishLastResortKeyPackage(uid, kp);
-      await _writeInt('last_resort_at', nowMs);
-    }
-  }
-
-  Future<void> _loadConversations() async {
-    final index = await _store.read('convs');
-    if (index == null) return;
-    for (final id in (jsonDecode(utf8.decode(index)) as List).cast<String>()) {
-      final raw = await _store.read('conv/$id');
-      if (raw == null) continue;
-      _convs[id] = _Conv.fromJson(jsonDecode(utf8.decode(raw)) as Map<String, Object?>);
-    }
-  }
-
-  Future<void> _saveConv(_Conv c) async {
-    _convs[c.id] = c;
-    await _store.write('conv/${c.id}', utf8.encode(jsonEncode(c.toJson())));
-    await _store.write('convs', utf8.encode(jsonEncode(_convs.keys.toList())));
-  }
-
   void _emit() {
     if (!_changes.isClosed) _changes.add(null);
   }
 
   // ------------------------------------------------------ identity pins
 
-  Future<void> _loadPins() async {
-    final raw = await _store.read('pins');
-    if (raw == null) return;
-    (jsonDecode(utf8.decode(raw)) as Map<String, Object?>).forEach((uid, v) {
-      _pins[uid] = _Pin.fromJson((v as Map).cast<String, Object?>());
-    });
-  }
-
-  Future<void> _savePins() =>
-      _store.write('pins', utf8.encode(jsonEncode({for (final e in _pins.entries) e.key: e.value.toJson()})));
-
   /// Pins every member's key on first sight and flags changes afterwards.
-  Future<void> _checkKeys(_Conv c) async {
+  Future<void> _checkKeys(ConversationState c) async {
     final gid = _gid(c.id);
     if (!_engine.hasGroup(groupId: gid)) return;
     var changed = false;
     for (final m in _engine.memberKeys(groupId: gid)) {
       final who = utf8.decode(m.identity);
       if (who == uid) continue;
-      final key = base64Encode(m.signatureKey);
-      final pin = _pins[who];
-      if (pin == null) {
-        _pins[who] = _Pin(key: key);
-        changed = true;
-      } else if (pin.key != key && pin.pendingKey != key) {
-        pin
-          ..pendingKey = key
-          ..verified = false;
-        changed = true;
-        for (final other in _convs.values.where((x) => !x.removed && _hasMember(x, who))) {
-          other.messages.add(
-            DecryptedMessage(
-              id: 'key-$who-${_now().millisecondsSinceEpoch}',
-              conversationId: other.id,
-              senderUid: '',
-              text: 'A chave de segurança de um participante mudou. Confira em "Verificar segurança".',
-              timestamp: _now().millisecondsSinceEpoch,
-              outgoing: false,
-            ),
-          );
-          await _saveConv(other);
-        }
+      switch (_pins.observe(who, base64Encode(m.signatureKey))) {
+        case PinObservation.unchanged:
+          break;
+        case PinObservation.pinned:
+          changed = true;
+        case PinObservation.changed:
+          changed = true;
+          for (final other in _conversations.all.values.where((x) => !x.removed && _hasMember(x, who))) {
+            other.messages.add(
+              DecryptedMessage(
+                id: 'key-$who-${_now().millisecondsSinceEpoch}',
+                conversationId: other.id,
+                senderUid: '',
+                text: 'A chave de segurança de um participante mudou. Confira em "Verificar segurança".',
+                timestamp: _now().millisecondsSinceEpoch,
+                outgoing: false,
+              ),
+            );
+            await _conversations.save(other);
+          }
       }
     }
-    if (changed) await _savePins();
+    if (changed) await _pins.save();
   }
 
-  bool _hasMember(_Conv c, String who) {
+  bool _hasMember(ConversationState c, String who) {
     final gid = _gid(c.id);
     return _engine.hasGroup(groupId: gid) && _engine.members(groupId: gid).any((m) => utf8.decode(m) == who);
   }
 
-  KeyStatus keyStatus(String otherUid) {
-    final pin = _pins[otherUid];
-    if (pin == null) return KeyStatus.unknown;
-    if (pin.pendingKey != null) return KeyStatus.changed;
-    return pin.verified ? KeyStatus.verified : KeyStatus.pinned;
-  }
+  KeyStatus keyStatus(String otherUid) => _pins.statusOf(otherUid);
 
   /// 60-digit number both people must see identically. Uses the key currently
   /// in use (the new one, if it changed). Null if the person was never seen.
   Future<String?> safetyNumberWith(String otherUid) async {
-    final pin = _pins[otherUid];
-    if (pin == null) return null;
+    final key = _pins.currentKey(otherUid);
+    if (key == null) return null;
     return safetyNumber(
       myIdentity: _myId,
       myKey: _engine.signaturePublicKey,
       theirIdentity: utf8.encode(otherUid),
-      theirKey: base64Decode(pin.pendingKey ?? pin.key),
+      theirKey: base64Decode(key),
     );
   }
 
   /// The user compared safety numbers: trust the current key (accepting a
   /// change, if there was one).
   Future<void> markVerified(String otherUid, {bool verified = true}) async {
-    final pin = _pins[otherUid];
-    if (pin == null) return;
-    if (pin.pendingKey != null) {
-      pin
-        ..key = pin.pendingKey!
-        ..pendingKey = null;
-    }
-    pin.verified = verified;
-    await _lock.run(_savePins);
+    if (!_pins.markVerified(otherUid, verified: verified)) return;
+    await _lock.run(_pins.save);
     _emit();
   }
 
   // --------------------------------------------------------------- reads
 
   List<ConversationSummary> conversations() {
-    final list = _convs.values.map(_summary).toList();
+    final list = _conversations.all.values.map(_summary).toList();
     int last(ConversationSummary s) => s.lastMessage?.timestamp ?? 0;
     list.sort((a, b) => last(b).compareTo(last(a)));
     return list;
   }
 
   ConversationSummary? conversation(String id) {
-    final c = _convs[id];
+    final c = _conversations.all[id];
     return c == null ? null : _summary(c);
   }
 
@@ -359,20 +278,17 @@ class MessagingService {
   /// visibility window ran out come back hidden and without their text (the
   /// text stays stored; [requestReveal] shows it again).
   List<DecryptedMessage> messages(String conversationId) {
-    final c = _convs[conversationId];
+    final c = _conversations.all[conversationId];
     if (c == null) return const [];
-    return List.unmodifiable(c.messages.map((m) => _visible(c, m)));
+    return List.unmodifiable(c.messages.map(_visible(c)));
   }
 
-  DecryptedMessage _visible(_Conv c, DecryptedMessage m) {
-    final window = c.visibilitySeconds;
-    if (window <= 0 || m.outgoing || m.senderUid.isEmpty) return m;
-    final until = m.viewedUntil;
-    if (until == null || _now().millisecondsSinceEpoch < until) return m;
-    return m.copyWith(hidden: true, text: '');
+  DecryptedMessage Function(DecryptedMessage) _visible(ConversationState c) {
+    final nowMs = _now().millisecondsSinceEpoch;
+    return (m) => VisibilityPolicy.view(c, m, nowMs);
   }
 
-  ConversationSummary _summary(_Conv c) {
+  ConversationSummary _summary(ConversationState c) {
     final has = _engine.hasGroup(groupId: _gid(c.id));
     final mls = has ? _engine.members(groupId: _gid(c.id)).map(utf8.decode).toList() : <String>[];
     final server = c.record?.members.keys.toSet();
@@ -382,7 +298,7 @@ class MessagingService {
       memberUids: has ? mls : (server?.toList() ?? const []),
       isAdmin: c.record?.isAdmin(uid) ?? false,
       title: c.title,
-      lastMessage: c.messages.isEmpty ? null : _visible(c, c.messages.last),
+      lastMessage: c.messages.isEmpty ? null : _visible(c)(c.messages.last),
       visibilityWindow: c.visibilitySeconds > 0 ? Duration(seconds: c.visibilitySeconds) : null,
       ended: c.removed,
       pendingWelcome: !has,
@@ -395,9 +311,9 @@ class MessagingService {
 
   void _onConversationIds(List<String> ids) {
     for (final id in ids) {
-      if (!_convs.containsKey(id)) {
+      if (!_conversations.all.containsKey(id)) {
         final type = id.startsWith('d_') ? ConversationType.direct : ConversationType.group;
-        _convs[id] = _Conv(id: id, type: type);
+        _conversations.all[id] = ConversationState(id: id, type: type);
       }
       _watch(id);
     }
@@ -423,7 +339,7 @@ class MessagingService {
     if (_rejoinAsked.contains(id)) return;
     _rejoinTimers[id] ??= Timer(rejoinDelay, () {
       _rejoinTimers.remove(id);
-      final c = _convs[id];
+      final c = _conversations.all[id];
       if (c != null && !c.removed && !_engine.hasGroup(groupId: _gid(id)) && _rejoinAsked.add(id)) {
         unawaited(_backend.requestRejoin(id, uid).catchError((Object _) {}));
       }
@@ -432,7 +348,7 @@ class MessagingService {
 
   // ------------------------------------------------- lost-commit recovery
 
-  bool _isBehind(_Conv c) {
+  bool _isBehind(ConversationState c) {
     final gid = _gid(c.id);
     final record = c.record;
     return record != null &&
@@ -444,7 +360,7 @@ class MessagingService {
   /// Called after every drain and server update: when the group stays behind
   /// the server epoch, the commits in between are gone (retention) and this
   /// device can never catch up by itself.
-  void _watchGap(_Conv c) {
+  void _watchGap(ConversationState c) {
     if (_disposed) return;
     if (!_isBehind(c)) {
       _gapTimers.remove(c.id)?.cancel();
@@ -457,13 +373,13 @@ class MessagingService {
   }
 
   Future<void> _recoverFromGap(String id) async {
-    final c = _convs[id];
+    final c = _conversations.all[id];
     if (c == null || !_isBehind(c)) return; // caught up in the meantime
     await _dropGroupAndRejoin(c, 'Você ficou muito tempo offline. Reconectando à conversa…');
   }
 
   /// Forgets the group state (keeping the history) and asks to be re-invited.
-  Future<void> _dropGroupAndRejoin(_Conv c, String notice) async {
+  Future<void> _dropGroupAndRejoin(ConversationState c, String notice) async {
     final id = c.id;
     if (_engine.hasGroup(groupId: _gid(id))) await _engine.deleteGroup(groupId: _gid(id));
     await _persistEngine();
@@ -479,7 +395,7 @@ class MessagingService {
         outgoing: false,
       ),
     );
-    await _saveConv(c);
+    await _conversations.save(c);
     _rejoinAsked.remove(id);
     _scheduleRejoin(id);
     _emit();
@@ -508,7 +424,7 @@ class MessagingService {
     final key = '$id/$other';
     if (!_repairing.add(key)) return;
     try {
-      final c = _convs[id];
+      final c = _conversations.all[id];
       final record = c?.record ?? await _backend.getConversation(id);
       if (c == null || record == null || !record.members.containsKey(other)) return;
       // Elected repairer: the lowest uid among the admins other than the
@@ -553,7 +469,7 @@ class MessagingService {
   }
 
   Future<void> _onRecord(String id, ConversationRecord? record) async {
-    final c = _convs[id];
+    final c = _conversations.all[id];
     if (c == null) return;
     if (record == null || !record.members.containsKey(uid)) {
       // We were removed (or left): forget the keys, keep the local history.
@@ -568,12 +484,12 @@ class MessagingService {
       }
       c.removed = true;
       c.record = record;
-      await _saveConv(c);
+      await _conversations.save(c);
       _emit();
       return;
     }
     c.record = record;
-    await _saveConv(c);
+    await _conversations.save(c);
     _watchGap(c);
     await _reconcile(c);
     _emit();
@@ -581,7 +497,7 @@ class MessagingService {
 
   /// Admins remove from the MLS group anyone the server no longer lists
   /// (e.g. members who left), so they stop receiving keys.
-  Future<void> _reconcile(_Conv c) async {
+  Future<void> _reconcile(ConversationState c) async {
     final record = c.record;
     final gid = _gid(c.id);
     if (record == null || !record.isAdmin(uid) || !_engine.hasGroup(groupId: gid)) return;
@@ -611,14 +527,14 @@ class MessagingService {
         throw const FormatException('group id mismatch');
       }
       await _persistEngine();
-      final c = _convs[w.conversationId] ?? _Conv(id: w.conversationId, type: record.type);
+      final c = _conversations.all[w.conversationId] ?? ConversationState(id: w.conversationId, type: record.type);
       c
         ..type = record.type
         ..record = record
         ..removed = false
         ..joinedEpoch = _engine.epoch(groupId: gid).toInt()
         ..lastRotation = _now().millisecondsSinceEpoch;
-      await _saveConv(c);
+      await _conversations.save(c);
       await _checkKeys(c);
       _rejoinTimers.remove(c.id)?.cancel();
       if (_rejoinAsked.remove(c.id)) {
@@ -634,7 +550,7 @@ class MessagingService {
 
   /// Applies buffered envelopes in (epoch, id) order as far as possible.
   Future<void> _drain(String id) async {
-    final c = _convs[id];
+    final c = _conversations.all[id];
     final queue = _buffer[id];
     final gid = _gid(id);
     if (c == null || !_engine.hasGroup(groupId: gid)) return;
@@ -715,7 +631,7 @@ class MessagingService {
       return;
     }
     await _persistEngine();
-    await _saveConv(c);
+    await _conversations.save(c);
     // Only now is the message really ours: the server may forget it.
     _confirmDelivery(toAck);
     _watchGap(c);
@@ -730,10 +646,10 @@ class MessagingService {
 
   /// Whether this device may publish commits in [c]: admins, and both people
   /// of a direct chat. (The server enforces the same rule.)
-  bool _canCommit(_Conv c) => c.record?.isAdmin(uid) ?? false;
+  bool _canCommit(ConversationState c) => c.record?.isAdmin(uid) ?? false;
 
   /// Admins turn members' stored key-rotation proposals into one commit.
-  Future<void> _commitPendingProposals(_Conv c) async {
+  Future<void> _commitPendingProposals(ConversationState c) async {
     final gid = _gid(c.id);
     final record = c.record;
     if (!_canCommit(c) || record == null || !_engine.hasGroup(groupId: gid)) return;
@@ -758,12 +674,12 @@ class MessagingService {
     }
   }
 
-  void _markProcessed(_Conv c, String id) {
+  void _markProcessed(ConversationState c, String id) {
     c.processed.add(id);
     if (c.processed.length > 5000) c.processed.remove(c.processed.first);
   }
 
-  void _handlePayload(_Conv c, Envelope e, String sender, Uint8List plaintext) {
+  void _handlePayload(ConversationState c, Envelope e, String sender, Uint8List plaintext) {
     if (sender != e.sender) return; // server-claimed sender must match the MLS signature
     final Map<String, Object?> p;
     try {
@@ -799,12 +715,12 @@ class MessagingService {
             vis >= 0 &&
             vis <= maxVisibilityWindow.inSeconds &&
             (c.type == ConversationType.direct || isAdmin)) {
-          _applyWindow(c, vis);
+          VisibilityPolicy.apply(c, vis, _now().millisecondsSinceEpoch);
         }
     }
   }
 
-  void _addSystem(_Conv c, Envelope e, String text) {
+  void _addSystem(ConversationState c, Envelope e, String text) {
     c.messages.add(
       DecryptedMessage(
         id: e.id,
@@ -833,7 +749,7 @@ class MessagingService {
         existing = null;
       }
       if (existing != null) {
-        _convs.putIfAbsent(id, () => _Conv(id: id, type: ConversationType.direct));
+        _conversations.all.putIfAbsent(id, () => ConversationState(id: id, type: ConversationType.direct));
         _watch(id);
         return id; // created by the other side: waiting for its Welcome
       }
@@ -873,8 +789,8 @@ class MessagingService {
         members: {uid: MemberRole.admin, for (final m in others) m: MemberRole.member},
       );
       await _create(record, kps, others);
-      _convs[id]!.title = title.trim();
-      await _saveConv(_convs[id]!);
+      _conversations.all[id]!.title = title.trim();
+      await _conversations.save(_conversations.all[id]!);
     });
     await _sendPayload(id, {'t': 'meta', 'title': title.trim()});
     return id;
@@ -894,12 +810,12 @@ class MessagingService {
       await _engine.deleteGroup(groupId: gid);
       rethrow;
     }
-    final c = _Conv(id: record.id, type: record.type)
+    final c = ConversationState(id: record.id, type: record.type)
       ..record = record
       ..joinedEpoch = 1
       ..lastRotation = _now().millisecondsSinceEpoch;
     await _persistEngine();
-    await _saveConv(c);
+    await _conversations.save(c);
     await _checkKeys(c);
     _watch(record.id);
     _emit();
@@ -935,10 +851,10 @@ class MessagingService {
       rethrow;
     }
     await _engine.mergePendingCommit(groupId: gid);
-    final c = _convs[id]!;
+    final c = _conversations.all[id]!;
     _markProcessed(c, env.id);
     await _persistEngine();
-    await _saveConv(c);
+    await _conversations.save(c);
     await _checkKeys(c);
   }
 
@@ -995,7 +911,7 @@ class MessagingService {
   Future<void> rename(String id, String title) async {
     final c = _requireAdminGroup(id);
     c.title = title.trim();
-    await _lock.run(() => _saveConv(c));
+    await _lock.run(() => _conversations.save(c));
     await _sendPayload(id, {'t': 'meta', 'title': title.trim()});
   }
 
@@ -1003,7 +919,7 @@ class MessagingService {
   /// Admins commit directly; ordinary members send a proposal that an admin
   /// commits (the server does not let them commit).
   Future<void> rotateKeys(String id) async {
-    final c = _convs[id];
+    final c = _conversations.all[id];
     if (c != null && c.record != null && !_canCommit(c)) {
       await _lock.run(() => _proposeRotation(c));
       return;
@@ -1011,12 +927,12 @@ class MessagingService {
     await _withCommitRetry(id, () async {
       final out = await _engine.selfUpdate(groupId: _gid(id));
       await _publishCommit(id, out);
-      _convs[id]!.lastRotation = _now().millisecondsSinceEpoch;
-      await _saveConv(_convs[id]!);
+      _conversations.all[id]!.lastRotation = _now().millisecondsSinceEpoch;
+      await _conversations.save(_conversations.all[id]!);
     });
   }
 
-  Future<void> _proposeRotation(_Conv c) async {
+  Future<void> _proposeRotation(ConversationState c) async {
     final gid = _gid(c.id);
     if (!_engine.hasGroup(groupId: gid)) return;
     final proposal = await _engine.proposeSelfUpdate(groupId: gid);
@@ -1032,10 +948,10 @@ class MessagingService {
     _markProcessed(c, env.id);
     c.lastRotation = _now().millisecondsSinceEpoch;
     await _persistEngine();
-    await _saveConv(c);
+    await _conversations.save(c);
   }
 
-  Future<void> _rotateIfStale(_Conv c) async {
+  Future<void> _rotateIfStale(ConversationState c) async {
     final age = _now().millisecondsSinceEpoch - c.lastRotation;
     if (age < _rotationInterval.inMilliseconds || c.record == null) return;
     try {
@@ -1043,7 +959,7 @@ class MessagingService {
         final out = await _engine.selfUpdate(groupId: _gid(c.id));
         await _publishCommit(c.id, out);
         c.lastRotation = _now().millisecondsSinceEpoch;
-        await _saveConv(c);
+        await _conversations.save(c);
       } else {
         await _proposeRotation(c);
       }
@@ -1057,8 +973,8 @@ class MessagingService {
     await _lock.run(() => _onRecord(id, null));
   }
 
-  _Conv _requireAdminGroup(String id) {
-    final c = _convs[id];
+  ConversationState _requireAdminGroup(String id) {
+    final c = _conversations.all[id];
     if (c == null || c.type != ConversationType.group) throw const NotAllowedException('Conversa inválida.');
     if (!(c.record?.isAdmin(uid) ?? false)) throw const NotAllowedException('Apenas administradores.');
     return c;
@@ -1080,7 +996,7 @@ class MessagingService {
     for (var attempt = 0; ; attempt++) {
       try {
         await _lock.run(() async {
-          final c = _convs[id];
+          final c = _conversations.all[id];
           final gid = _gid(id);
           if (c == null || c.removed || !_engine.hasGroup(groupId: gid)) {
             throw const NotAllowedException('Conversa indisponível.');
@@ -1111,7 +1027,7 @@ class MessagingService {
             );
           }
           await _persistEngine();
-          await _saveConv(c);
+          await _conversations.save(c);
         });
         _emit();
         return;
@@ -1128,21 +1044,21 @@ class MessagingService {
   /// Deletes one message from this device. There is no copy anywhere else: the
   /// server keeps nothing and the other person's copy is theirs to keep or lose.
   Future<void> deleteMessage(String conversationId, String messageId) => _lock.run(() async {
-    final c = _convs[conversationId];
+    final c = _conversations.all[conversationId];
     if (c == null) return;
     final before = c.messages.length;
     c.messages.removeWhere((m) => m.id == messageId);
-    if (c.messages.length != before) await _saveConv(c);
+    if (c.messages.length != before) await _conversations.save(c);
     _emit();
   });
 
   /// Deletes this conversation's whole history from this device (the group and
   /// its keys stay, so it keeps working for new messages).
   Future<void> clearHistory(String conversationId) => _lock.run(() async {
-    final c = _convs[conversationId];
+    final c = _conversations.all[conversationId];
     if (c == null) return;
     c.messages.clear();
-    await _saveConv(c);
+    await _conversations.save(c);
     _emit();
   });
 
@@ -1152,74 +1068,44 @@ class MessagingService {
   /// whole conversation ([window] null or zero turns it off). Admins in a
   /// group; either person in a 1:1. Travels sealed, like the group title.
   Future<void> setVisibilityWindow(String id, Duration? window) async {
-    final c = _convs[id];
+    final c = _conversations.all[id];
     if (c == null || c.removed) throw const NotAllowedException('Conversa indisponível.');
     if (c.type == ConversationType.group && !(c.record?.isAdmin(uid) ?? false)) {
       throw const NotAllowedException('Apenas administradores.');
     }
     final seconds = window == null ? 0 : window.inSeconds.clamp(0, maxVisibilityWindow.inSeconds);
     await _lock.run(() async {
-      _applyWindow(c, seconds);
-      await _saveConv(c);
+      VisibilityPolicy.apply(c, seconds, _now().millisecondsSinceEpoch);
+      await _conversations.save(c);
     });
     await _sendPayload(id, {'t': 'meta', 'vis': seconds});
-  }
-
-  void _applyWindow(_Conv c, int seconds) {
-    final was = c.visibilitySeconds;
-    c.visibilitySeconds = seconds;
-    if (seconds > 0 && was == 0) {
-      // Turning it on: what is already here gets the window starting now.
-      final until = _now().millisecondsSinceEpoch + seconds * 1000;
-      for (var i = 0; i < c.messages.length; i++) {
-        final m = c.messages[i];
-        if (!m.outgoing && m.senderUid.isNotEmpty && m.viewedUntil == null) {
-          c.messages[i] = m.copyWith(viewedUntil: until);
-        }
-      }
-    }
   }
 
   /// The conversation is on screen: received messages not shown before start
   /// their window now. Call it when the person opens the conversation (and
   /// when new messages arrive while it is open).
   Future<void> markViewed(String id) => _lock.run(() async {
-    final c = _convs[id];
-    if (c == null || c.visibilitySeconds <= 0) return;
-    final until = _now().millisecondsSinceEpoch + c.visibilitySeconds * 1000;
-    var changed = false;
-    for (var i = 0; i < c.messages.length; i++) {
-      final m = c.messages[i];
-      if (!m.outgoing && m.senderUid.isNotEmpty && m.viewedUntil == null) {
-        c.messages[i] = m.copyWith(viewedUntil: until);
-        changed = true;
-      }
-    }
-    if (!changed) return;
-    await _saveConv(c);
+    final c = _conversations.all[id];
+    if (c == null || !VisibilityPolicy.startForUnseen(c, _now().millisecondsSinceEpoch)) return;
+    await _conversations.save(c);
     _emit();
   });
 
   /// Shows a hidden message again for the conversation's window. Local only:
   /// the message never left this device, so nobody is asked anything.
   Future<void> requestReveal(String conversationId, String messageId) => _lock.run(() async {
-    final c = _convs[conversationId];
-    if (c == null || c.visibilitySeconds <= 0) return;
-    final i = c.messages.indexWhere((m) => m.id == messageId);
-    if (i < 0 || c.messages[i].outgoing || c.messages[i].senderUid.isEmpty) return;
-    c.messages[i] = c.messages[i].copyWith(viewedUntil: _now().millisecondsSinceEpoch + c.visibilitySeconds * 1000);
-    await _saveConv(c);
+    final c = _conversations.all[conversationId];
+    if (c == null || !VisibilityPolicy.reveal(c, messageId, _now().millisecondsSinceEpoch)) return;
+    await _conversations.save(c);
     _emit();
   });
 
   /// Deletes an ended conversation (one this device left or was removed from)
   /// from this device. Only the person decides this, nothing else deletes it.
   Future<void> deleteConversation(String id) => _lock.run(() async {
-    final c = _convs[id];
+    final c = _conversations.all[id];
     if (c == null || !c.removed) throw const NotAllowedException('Saia da conversa antes de apagá-la.');
-    _convs.remove(id);
-    await _store.delete('conv/$id');
-    await _store.write('convs', utf8.encode(jsonEncode(_convs.keys.toList())));
+    await _conversations.remove(id);
     _emit();
   });
 
@@ -1230,74 +1116,6 @@ class MessagingService {
   }
 
   static Uint8List _gid(String id) => utf8.encode(id);
-}
-
-class _Conv {
-  _Conv({required this.id, required this.type});
-
-  final String id;
-  ConversationType type;
-  String? title;
-  int joinedEpoch = 0;
-  int lastRotation = 0;
-  bool removed = false;
-
-  /// Seconds a received message stays visible after being shown; 0 = always.
-  int visibilitySeconds = 0;
-  ConversationRecord? record;
-  final Set<String> processed = <String>{};
-  final List<DecryptedMessage> messages = [];
-
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'type': type.name,
-    'title': title,
-    'joined': joinedEpoch,
-    'rot': lastRotation,
-    'removed': removed,
-    'vis': visibilitySeconds,
-    'processed': processed.toList(),
-    'messages': messages.map((m) => m.toJson()).toList(),
-  };
-
-  factory _Conv.fromJson(Map<String, Object?> j) {
-    final c = _Conv(id: j['id'] as String, type: ConversationType.values.byName(j['type'] as String))
-      ..title = j['title'] as String?
-      ..joinedEpoch = j['joined'] as int? ?? 0
-      ..lastRotation = j['rot'] as int? ?? 0
-      ..removed = j['removed'] as bool? ?? false
-      ..visibilitySeconds = j['vis'] as int? ?? 0;
-    c.processed.addAll((j['processed'] as List? ?? const []).cast<String>());
-    c.messages.addAll(
-      (j['messages'] as List? ?? const []).map((m) => DecryptedMessage.fromJson((m as Map).cast<String, Object?>())),
-    );
-    return c;
-  }
-}
-
-class _Pin {
-  _Pin({required this.key});
-
-  String key;
-  String? pendingKey;
-  bool verified = false;
-
-  Map<String, Object?> toJson() => {'k': key, 'p': pendingKey, 'v': verified};
-
-  factory _Pin.fromJson(Map<String, Object?> j) => _Pin(key: j['k'] as String)
-    ..pendingKey = j['p'] as String?
-    ..verified = j['v'] as bool? ?? false;
-}
-
-/// Serializes async operations on the MLS state.
-class _Mutex {
-  Future<void> _last = Future.value();
-
-  Future<T> run<T>(Future<T> Function() action) {
-    final result = _last.then((_) => action());
-    _last = result.then((_) {}, onError: (_) {});
-    return result;
-  }
 }
 
 bool _bytesEqual(List<int> a, List<int> b) {
