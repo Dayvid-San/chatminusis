@@ -44,9 +44,11 @@ ser atualizado a cada mudança sensível.
 |---|---|---|
 | Núcleo MLS (Rust) | Sigilo, adulteração, replay, membro removido, entrada tardia, apagamento de chaves antigas, corrida de commits, persistência, uso único de KeyPackage, ciphersuite única | 41 (`cargo test`, inclui a suíte híbrida de rascunho só nos testes) |
 | Ponte Dart↔Rust | Mesmas operações chamadas do Dart pela FFI | 3 |
-| Serviço de mensagens | Fluxos completos com a biblioteca real: 1:1, grupos, admin, rotação concorrente, reinício, saída, temporárias, verificação de chaves, reentrada, **carteiro** (esquece o entregue, espera o offline, só confirma depois de gravar), apagar histórico | 33 |
-| Guardas de privacidade | Lêem o código do projeto: sem logs, uma única escrita na área de transferência, sem compartilhar/análise, manifest e plist travados | 16 |
-| Entrada e cópia privadas | Teclado/corretor/autofill desligados, menu de seleção reduzido, copiar só pelo menu da mensagem | 10 |
+| Serviço de mensagens | Fluxos completos com a biblioteca real: 1:1, grupos, admin, rotação concorrente, reinício, saída, verificação de chaves, reentrada, **carteiro** (esquece o entregue, espera o offline, só confirma depois de gravar), apagar histórico, **janela de visibilidade** (oculta sem apagar, ver de novo, papel de quem define), conversa encerrada preservada | 40 |
+| Guardas de privacidade | Lêem o código do app e de `components/`: sem logs, uma única escrita na área de transferência, sem compartilhar/análise, manifest e plist travados | 16 |
+| Componentes (`components/`) | Teclado/corretor/autofill desligados, menu de seleção reduzido, copiar só pelo menu da mensagem, balão oculto, confirmação, reconstrução no prazo | 16 |
+| Arquitetura | Fronteiras entre módulos e camadas ([`ARQUITETURA.md`](ARQUITETURA.md)) | 7 |
+| Peças do serviço | Visibilidade, pins de identidade, armazenamento de conversas, fila serial | 11 |
 | Regras Firebase | Isolamento por usuário, compare-and-set de época, admin, bloqueio, remetente, KeyPackages, push, reentrada, **confirmações de entrega**, ninguém apaga envelope, servidor recusa guardar backup | 42 (emulador) |
 | RLS Supabase | As mesmas garantias + perfis não listáveis + **carteiro** (lista de pendentes calculada no servidor, confirmação, saída de membro, nada apagável à mão) | 102 asserções (PostgreSQL 16) |
 | Cloud Functions | Push sem conteúdo, tokens inválidos, retenção de 7 dias, **carteiro** (apagar quando todos confirmaram, saída de membro, remetente), script de limpeza | 30 (unitários + emulador) |

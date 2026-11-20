@@ -8,7 +8,7 @@
 
 1. **Em trânsito**, a mensagem é um bloco cifrado que o servidor não consegue ler.
 2. **Entregue a todos, o servidor a apaga.** Ninguém, nem quem enviou, consegue apagá-la antes disso.
-3. **No aparelho**, ela fica cifrada no cofre do app, fora de qualquer backup do sistema, e só sai se a pessoa tocar em "Copiar mensagem".
+3. **No aparelho**, ela fica cifrada no cofre do app, fora de qualquer backup do sistema, e só sai se a pessoa tocar em "Copiar mensagem". **Só a própria pessoa apaga** o que está no seu aparelho; o app não apaga nada sozinho.
 
 ## 2. O que o servidor guarda
 
@@ -82,7 +82,9 @@ falha. Foram validados reintroduzindo três vazamentos de propósito.
 | Saiu da conta | O app avisa e apaga chaves e histórico do aparelho |
 | Ficou mais de 7 dias offline | Perde as mensagens enviadas nesse intervalo que ninguém retirou do servidor |
 | Apagou uma mensagem ou limpou a conversa | Some **só deste aparelho**. A outra pessoa guarda a cópia dela |
-| Mensagem temporária | Some nos aparelhos de todos quando o prazo vence |
+| Saiu do grupo ou foi removido | A conversa fica na lista como encerrada, com o histórico, até **você** apagá-la |
+| O tempo passou | **Nada é apagado sozinho.** O app nunca remove uma mensagem por conta própria |
+| Janela de visibilidade da conversa | As mensagens que você recebe ficam **ocultas** depois do tempo definido; continuam guardadas e você pode ver de novo tocando nelas (ver [`ARQUITETURA.md`](ARQUITETURA.md) §5) |
 
 Não existe "recuperar": nem o servidor, nem os desenvolvedores têm cópia.
 
