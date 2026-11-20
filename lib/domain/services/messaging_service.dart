@@ -35,6 +35,9 @@ enum KeyStatus {
   changed,
 }
 
+/// Longest visibility window a conversation may set.
+const maxVisibilityWindow = Duration(days: 30);
+
 /// Maximum members per group (decision pending with the Owner; default 256).
 const maxGroupMembers = 256;
 
@@ -106,7 +109,6 @@ class MessagingService {
   final List<StreamSubscription<Object?>> _subs = [];
   final _changes = StreamController<void>.broadcast();
   final _lock = _Mutex();
-  Timer? _purgeTimer;
   bool _started = false;
 
   /// Set first thing in [dispose]. Work that was already in flight when the
@@ -143,7 +145,6 @@ class MessagingService {
       await _loadOrCreateEngine();
       await _loadConversations();
       await _loadPins();
-      await _purgeExpired();
     });
     await _ensureKeyPackages();
     _subs.add(_backend.watchWelcomes(uid).listen((w) => _enqueue(() => _onWelcome(w))));
@@ -151,13 +152,11 @@ class MessagingService {
     for (final c in _convs.values.where((c) => !c.removed)) {
       _watch(c.id);
     }
-    _purgeTimer = Timer.periodic(const Duration(minutes: 1), (_) => _enqueue(_purgeExpired));
     _emit();
   }
 
   Future<void> dispose() async {
     _disposed = true;
-    _purgeTimer?.cancel();
     for (final t in [..._rejoinTimers.values, ..._gapTimers.values]) {
       t.cancel();
     }
@@ -345,7 +344,7 @@ class MessagingService {
   // --------------------------------------------------------------- reads
 
   List<ConversationSummary> conversations() {
-    final list = _convs.values.where((c) => !c.removed).map(_summary).toList();
+    final list = _convs.values.map(_summary).toList();
     int last(ConversationSummary s) => s.lastMessage?.timestamp ?? 0;
     list.sort((a, b) => last(b).compareTo(last(a)));
     return list;
@@ -356,8 +355,22 @@ class MessagingService {
     return c == null ? null : _summary(c);
   }
 
-  List<DecryptedMessage> messages(String conversationId) =>
-      List.unmodifiable(_convs[conversationId]?.messages ?? const <DecryptedMessage>[]);
+  /// The conversation's messages as they may be shown now: received ones whose
+  /// visibility window ran out come back hidden and without their text (the
+  /// text stays stored; [requestReveal] shows it again).
+  List<DecryptedMessage> messages(String conversationId) {
+    final c = _convs[conversationId];
+    if (c == null) return const [];
+    return List.unmodifiable(c.messages.map((m) => _visible(c, m)));
+  }
+
+  DecryptedMessage _visible(_Conv c, DecryptedMessage m) {
+    final window = c.visibilitySeconds;
+    if (window <= 0 || m.outgoing || m.senderUid.isEmpty) return m;
+    final until = m.viewedUntil;
+    if (until == null || _now().millisecondsSinceEpoch < until) return m;
+    return m.copyWith(hidden: true, text: '');
+  }
 
   ConversationSummary _summary(_Conv c) {
     final has = _engine.hasGroup(groupId: _gid(c.id));
@@ -369,7 +382,9 @@ class MessagingService {
       memberUids: has ? mls : (server?.toList() ?? const []),
       isAdmin: c.record?.isAdmin(uid) ?? false,
       title: c.title,
-      lastMessage: c.messages.isEmpty ? null : c.messages.last,
+      lastMessage: c.messages.isEmpty ? null : _visible(c, c.messages.last),
+      visibilityWindow: c.visibilitySeconds > 0 ? Duration(seconds: c.visibilitySeconds) : null,
+      ended: c.removed,
       pendingWelcome: !has,
       membershipMismatch: has && server != null && !_sameSet(server, mls.toSet()),
       keyChanged: mls.any((m) => m != uid && keyStatus(m) == KeyStatus.changed),
@@ -380,7 +395,7 @@ class MessagingService {
 
   void _onConversationIds(List<String> ids) {
     for (final id in ids) {
-      if (!_convs.containsKey(id) || _convs[id]!.removed) {
+      if (!_convs.containsKey(id)) {
         final type = id.startsWith('d_') ? ConversationType.direct : ConversationType.group;
         _convs[id] = _Conv(id: id, type: type);
       }
@@ -760,7 +775,6 @@ class MessagingService {
       case 'msg':
         final text = p['text'];
         if (text is! String || text.isEmpty) return;
-        final ttl = p['x'];
         final received = _now().millisecondsSinceEpoch;
         c.messages.add(
           DecryptedMessage(
@@ -770,14 +784,22 @@ class MessagingService {
             text: text,
             timestamp: e.timestamp == 0 ? received : e.timestamp,
             outgoing: false,
-            expiresAt: ttl is int && ttl > 0 ? received + ttl * 1000 : null,
           ),
         );
       case 'meta':
         // Only admins may rename a group.
         final title = p['title'];
-        if (c.type == ConversationType.group && title is String && (c.record?.isAdmin(sender) ?? false)) {
+        final isAdmin = c.record?.isAdmin(sender) ?? false;
+        if (c.type == ConversationType.group && title is String && isAdmin) {
           c.title = title.length > 60 ? title.substring(0, 60) : title;
+        }
+        // The visibility window: admins in a group, either person in a 1:1.
+        final vis = p['vis'];
+        if (vis is int &&
+            vis >= 0 &&
+            vis <= maxVisibilityWindow.inSeconds &&
+            (c.type == ConversationType.direct || isAdmin)) {
+          _applyWindow(c, vis);
         }
     }
   }
@@ -951,8 +973,13 @@ class MessagingService {
       );
     });
     // Newcomers cannot read older messages: re-send the encrypted title.
-    final title = _convs[id]?.title;
-    if (title != null) await _sendPayload(id, {'t': 'meta', 'title': title});
+    if (c.title != null || c.visibilitySeconds > 0) {
+      await _sendPayload(id, {
+        't': 'meta',
+        if (c.title != null) 'title': c.title,
+        if (c.visibilitySeconds > 0) 'vis': c.visibilitySeconds,
+      });
+    }
     _emit();
   }
 
@@ -1037,20 +1064,19 @@ class MessagingService {
     return c;
   }
 
-  /// Sends a text message. [disappearAfter] makes it vanish on every device.
-  Future<void> send(String id, String text, {Duration? disappearAfter}) async {
+  /// Sends a text message.
+  Future<void> send(String id, String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     if (trimmed.length > 4000) throw const NotAllowedException('Mensagem muito longa.');
-    await _sendPayload(
-      id,
-      {'t': 'msg', 'text': trimmed, if (disappearAfter != null) 'x': disappearAfter.inSeconds},
-      localText: trimmed,
-      ttl: disappearAfter,
-    );
+    await _sendPayload(id, {'t': 'msg', 'text': trimmed}, localText: trimmed);
   }
 
-  Future<void> _sendPayload(String id, Map<String, Object?> payload, {String? localText, Duration? ttl}) async {
+  /// Lets a test send a payload the public API would refuse, to check that
+  /// receivers enforce the rules themselves.
+  Future<void> sendPayloadForTest(String id, Map<String, Object?> payload) => _sendPayload(id, payload);
+
+  Future<void> _sendPayload(String id, Map<String, Object?> payload, {String? localText}) async {
     for (var attempt = 0; ; attempt++) {
       try {
         await _lock.run(() async {
@@ -1081,7 +1107,6 @@ class MessagingService {
                 text: localText,
                 timestamp: now,
                 outgoing: true,
-                expiresAt: ttl == null ? null : now + ttl.inMilliseconds,
               ),
             );
           }
@@ -1099,9 +1124,6 @@ class MessagingService {
       }
     }
   }
-
-  /// Removes expired disappearing messages now (also runs every minute).
-  Future<void> purgeExpiredNow() => _lock.run(_purgeExpired);
 
   /// Deletes one message from this device. There is no copy anywhere else: the
   /// server keeps nothing and the other person's copy is theirs to keep or lose.
@@ -1124,15 +1146,82 @@ class MessagingService {
     _emit();
   });
 
-  Future<void> _purgeExpired() async {
-    final now = _now().millisecondsSinceEpoch;
-    for (final c in _convs.values) {
-      final before = c.messages.length;
-      c.messages.removeWhere((m) => m.expiresAt != null && m.expiresAt! <= now);
-      if (c.messages.length != before) await _saveConv(c);
+  // ------------------------------------------------------ visibility
+
+  /// Sets how long received messages stay visible after being shown, for the
+  /// whole conversation ([window] null or zero turns it off). Admins in a
+  /// group; either person in a 1:1. Travels sealed, like the group title.
+  Future<void> setVisibilityWindow(String id, Duration? window) async {
+    final c = _convs[id];
+    if (c == null || c.removed) throw const NotAllowedException('Conversa indisponível.');
+    if (c.type == ConversationType.group && !(c.record?.isAdmin(uid) ?? false)) {
+      throw const NotAllowedException('Apenas administradores.');
     }
-    _emit();
+    final seconds = window == null ? 0 : window.inSeconds.clamp(0, maxVisibilityWindow.inSeconds);
+    await _lock.run(() async {
+      _applyWindow(c, seconds);
+      await _saveConv(c);
+    });
+    await _sendPayload(id, {'t': 'meta', 'vis': seconds});
   }
+
+  void _applyWindow(_Conv c, int seconds) {
+    final was = c.visibilitySeconds;
+    c.visibilitySeconds = seconds;
+    if (seconds > 0 && was == 0) {
+      // Turning it on: what is already here gets the window starting now.
+      final until = _now().millisecondsSinceEpoch + seconds * 1000;
+      for (var i = 0; i < c.messages.length; i++) {
+        final m = c.messages[i];
+        if (!m.outgoing && m.senderUid.isNotEmpty && m.viewedUntil == null) {
+          c.messages[i] = m.copyWith(viewedUntil: until);
+        }
+      }
+    }
+  }
+
+  /// The conversation is on screen: received messages not shown before start
+  /// their window now. Call it when the person opens the conversation (and
+  /// when new messages arrive while it is open).
+  Future<void> markViewed(String id) => _lock.run(() async {
+    final c = _convs[id];
+    if (c == null || c.visibilitySeconds <= 0) return;
+    final until = _now().millisecondsSinceEpoch + c.visibilitySeconds * 1000;
+    var changed = false;
+    for (var i = 0; i < c.messages.length; i++) {
+      final m = c.messages[i];
+      if (!m.outgoing && m.senderUid.isNotEmpty && m.viewedUntil == null) {
+        c.messages[i] = m.copyWith(viewedUntil: until);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    await _saveConv(c);
+    _emit();
+  });
+
+  /// Shows a hidden message again for the conversation's window. Local only:
+  /// the message never left this device, so nobody is asked anything.
+  Future<void> requestReveal(String conversationId, String messageId) => _lock.run(() async {
+    final c = _convs[conversationId];
+    if (c == null || c.visibilitySeconds <= 0) return;
+    final i = c.messages.indexWhere((m) => m.id == messageId);
+    if (i < 0 || c.messages[i].outgoing || c.messages[i].senderUid.isEmpty) return;
+    c.messages[i] = c.messages[i].copyWith(viewedUntil: _now().millisecondsSinceEpoch + c.visibilitySeconds * 1000);
+    await _saveConv(c);
+    _emit();
+  });
+
+  /// Deletes an ended conversation (one this device left or was removed from)
+  /// from this device. Only the person decides this, nothing else deletes it.
+  Future<void> deleteConversation(String id) => _lock.run(() async {
+    final c = _convs[id];
+    if (c == null || !c.removed) throw const NotAllowedException('Saia da conversa antes de apagá-la.');
+    _convs.remove(id);
+    await _store.delete('conv/$id');
+    await _store.write('convs', utf8.encode(jsonEncode(_convs.keys.toList())));
+    _emit();
+  });
 
   /// Erases all local keys and history (logout / account switch).
   Future<void> wipe() async {
@@ -1152,6 +1241,9 @@ class _Conv {
   int joinedEpoch = 0;
   int lastRotation = 0;
   bool removed = false;
+
+  /// Seconds a received message stays visible after being shown; 0 = always.
+  int visibilitySeconds = 0;
   ConversationRecord? record;
   final Set<String> processed = <String>{};
   final List<DecryptedMessage> messages = [];
@@ -1163,6 +1255,7 @@ class _Conv {
     'joined': joinedEpoch,
     'rot': lastRotation,
     'removed': removed,
+    'vis': visibilitySeconds,
     'processed': processed.toList(),
     'messages': messages.map((m) => m.toJson()).toList(),
   };
@@ -1172,7 +1265,8 @@ class _Conv {
       ..title = j['title'] as String?
       ..joinedEpoch = j['joined'] as int? ?? 0
       ..lastRotation = j['rot'] as int? ?? 0
-      ..removed = j['removed'] as bool? ?? false;
+      ..removed = j['removed'] as bool? ?? false
+      ..visibilitySeconds = j['vis'] as int? ?? 0;
     c.processed.addAll((j['processed'] as List? ?? const []).cast<String>());
     c.messages.addAll(
       (j['messages'] as List? ?? const []).map((m) => DecryptedMessage.fromJson((m as Map).cast<String, Object?>())),

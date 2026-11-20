@@ -82,7 +82,8 @@ class DecryptedMessage {
     required this.text,
     required this.timestamp,
     required this.outgoing,
-    this.expiresAt,
+    this.viewedUntil,
+    this.hidden = false,
   });
 
   final String id;
@@ -92,8 +93,24 @@ class DecryptedMessage {
   final int timestamp;
   final bool outgoing;
 
-  /// Disappearing messages: milliseconds since epoch, or null.
-  final int? expiresAt;
+  /// Visibility window of a received message: milliseconds since epoch until
+  /// which it is shown, or null while it has not been displayed yet. Stored.
+  final int? viewedUntil;
+
+  /// Computed when read from the service, never stored: the conversation's
+  /// window has run out for this message. A hidden message carries no text.
+  final bool hidden;
+
+  DecryptedMessage copyWith({int? viewedUntil, bool? hidden, String? text}) => DecryptedMessage(
+    id: id,
+    conversationId: conversationId,
+    senderUid: senderUid,
+    text: text ?? this.text,
+    timestamp: timestamp,
+    outgoing: outgoing,
+    viewedUntil: viewedUntil ?? this.viewedUntil,
+    hidden: hidden ?? this.hidden,
+  );
 
   Map<String, Object?> toJson() => {
     'id': id,
@@ -102,7 +119,7 @@ class DecryptedMessage {
     't': text,
     'ts': timestamp,
     'o': outgoing,
-    if (expiresAt != null) 'x': expiresAt,
+    if (viewedUntil != null) 'v': viewedUntil,
   };
 
   factory DecryptedMessage.fromJson(Map<String, Object?> j) => DecryptedMessage(
@@ -112,7 +129,7 @@ class DecryptedMessage {
     text: j['t'] as String,
     timestamp: j['ts'] as int,
     outgoing: j['o'] as bool,
-    expiresAt: j['x'] as int?,
+    viewedUntil: j['v'] as int?,
   );
 }
 
@@ -128,6 +145,8 @@ class ConversationSummary {
     this.pendingWelcome = false,
     this.membershipMismatch = false,
     this.keyChanged = false,
+    this.visibilityWindow,
+    this.ended = false,
   });
 
   final String id;
@@ -149,4 +168,12 @@ class ConversationSummary {
 
   /// A member's identity key changed since it was pinned.
   final bool keyChanged;
+
+  /// How long a received message stays visible after being shown, set for the
+  /// whole conversation. Null: messages are never hidden.
+  final Duration? visibilityWindow;
+
+  /// This device left or was removed: the history stays here (only the user
+  /// deletes it) but nothing new can be sent or received.
+  final bool ended;
 }
