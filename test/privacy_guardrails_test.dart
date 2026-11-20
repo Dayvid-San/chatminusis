@@ -12,7 +12,8 @@ String read(String path) => File(path).readAsStringSync();
 
 /// Dart sources of the app (not the generated bridge code), without comment lines.
 Map<String, String> appSources() => {
-  for (final f in Directory('lib').listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart')))
+  for (final dir in ['lib', 'components/lib'])
+    for (final f in Directory(dir).listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart')))
     f.path: f.readAsStringSync().split('\n').where((l) => !l.trimLeft().startsWith('//')).join('\n'),
 };
 
@@ -34,12 +35,12 @@ void main() {
     test('the clipboard is never read, and written in exactly one place (the explicit Copy)', () {
       expect(filesContaining(sources, 'Clipboard.getData'), isEmpty);
       expect(filesContaining(sources, 'Clipboard.hasStrings'), isEmpty);
-      expect(filesContaining(sources, 'Clipboard.setData'), ['lib/core/security/private_clipboard.dart']);
+      expect(filesContaining(sources, 'Clipboard.setData'), ['components/lib/src/privacy/private_clipboard.dart']);
     });
 
     test('the only caller of the private clipboard is the long-press menu of a message', () {
       expect(filesContaining(sources, 'PrivateClipboard.copy'), [
-        'lib/presentation/chat/widgets/message_bubble_widget.dart',
+        'components/lib/src/chat/message_bubble.dart',
       ]);
     });
 
@@ -72,7 +73,7 @@ void main() {
 
     test('every text field is private, except e-mail and password at sign in and sign up', () {
       const allowed = {
-        'lib/presentation/shared_widgets/private_input.dart', // the wrappers themselves
+        'components/lib/src/privacy/private_input.dart', // the wrappers themselves
         'lib/presentation/auth/views/login_view.dart', // password managers are the user's own choice
         'lib/presentation/auth/views/register_view.dart',
       };

@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/utils/nickname.dart';
 import '../../../domain/entities/user_profile.dart';
 import '../view_models/profile_view_model.dart';
-import '../../shared_widgets/private_input.dart';
+import 'package:chatminusis_components/chatminusis_components.dart';
 
 /// First-time nickname setup (mandatory) and later editing.
 class NicknameView extends StatefulWidget {

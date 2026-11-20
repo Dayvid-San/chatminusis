@@ -5,7 +5,7 @@ import '../../../domain/entities/user_profile.dart';
 import '../../../domain/services/messaging_service.dart';
 import '../view_models/conversations_view_model.dart';
 import 'nickname_picker.dart';
-import '../../shared_widgets/private_input.dart';
+import 'package:chatminusis_components/chatminusis_components.dart';
 
 /// Pops with the new conversation id.
 class CreateGroupView extends StatefulWidget {

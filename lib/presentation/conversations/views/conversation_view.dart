@@ -6,7 +6,7 @@ import '../../chat/widgets/message_bubble_widget.dart';
 import '../view_models/conversations_view_model.dart';
 import 'members_view.dart';
 import 'verify_view.dart';
-import '../../shared_widgets/private_input.dart';
+import 'package:chatminusis_components/chatminusis_components.dart';
 
 class ConversationView extends StatefulWidget {
   const ConversationView({super.key, required this.conversationId});

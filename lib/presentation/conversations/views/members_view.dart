@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../view_models/conversations_view_model.dart';
 import 'nickname_picker.dart';
-import '../../shared_widgets/private_input.dart';
+import 'package:chatminusis_components/chatminusis_components.dart';
 
 class MembersView extends StatelessWidget {
   const MembersView({super.key, required this.conversationId});

@@ -33,9 +33,10 @@ security_review_required_paths:       # qualquer mudança aqui passa pelo agente
   - rust/**                            # núcleo criptográfico
   - packages/chat_crypto_ffi/rust/**   # ponte
   - lib/domain/services/**             # serviço de mensagens (confirmação só após gravar, reentrada)
-  - lib/core/security/**               # bloqueio do app, área de transferência privada
+  - lib/core/security/**               # bloqueio do app
   - lib/data/**                        # Firebase, Supabase e cofre local
-  - lib/presentation/shared_widgets/private_input.dart
+  - components/lib/src/privacy/**      # entrada privada e área de transferência privada
+  - components/lib/src/chat/message_bubble.dart   # único chamador da cópia
   - firebase/**                        # regras do banco e seus testes
   - functions/**                       # carteiro, busca, KeyPackages
   - supabase/**                        # migrações e RLS
