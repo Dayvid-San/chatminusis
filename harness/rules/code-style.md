@@ -1,10 +1,11 @@
 # Regra: código
 
-## Arquitetura (`lib/`)
-- `core/`: serviços transversais (auth, tema, utilitários, futuramente criptografia).
-- `data/`: modelos, serviços de acesso ao Firebase, repositórios.
-- `domain/`: entidades e contratos de repositório.
-- `presentation/<feature>/`: `views/`, `view_models/`, `widgets/`.
+## Arquitetura
+Detalhes e regras de dependência em [`docs/ARQUITETURA.md`](../../docs/ARQUITETURA.md); `test/architecture_test.dart` as confere.
+- `components/`: widgets reutilizáveis que não conhecem o app. Algo que mais de um módulo usaria vai para lá.
+- `lib/core/`: base compartilhada (tema, erros, utilitários); não depende de módulo.
+- `lib/features/<módulo>/{domain,data,presentation}/`: `domain` é Dart puro, `data` implementa contratos, `presentation` tem telas e ViewModels.
+- Um módulo só entra em outro pelo `domain`.
 - Estado com `provider` (`ChangeNotifier`), rotas com `go_router`.
 - UI não acessa Firebase diretamente: passa pelo ViewModel → Service/Repository.
 

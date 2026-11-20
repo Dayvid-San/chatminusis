@@ -184,7 +184,7 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - [x] Dados do app fora dos backups do Android (`allowBackup=false` + regras de extração).
 - [x] Bloqueio por biometria/PIN do aparelho ao abrir e após 30 s em segundo plano.
 - [x] `FLAG_SECURE` no Android (bloqueia print, gravação e prévia); desfoque no multitarefa do iOS.
-- [x] Mensagens temporárias (5 min a 7 dias), apagadas nos dois lados.
+- [x] ~~Mensagens temporárias~~ **substituídas** (20/11/2026): o app não apaga nada sozinho. Cada conversa tem uma janela de visibilidade: o que se recebe fica oculto depois do tempo, guardado, com "ver de novo" (ver `ARQUITETURA.md` §5).
 - [x] Sair apaga chaves e histórico do aparelho (com aviso).
 - [x] Aviso em aparelhos com root/jailbreak (o controle real no servidor é o App Check).
 - O iOS não permite bloquear prints; o app apenas oculta o conteúdo no multitarefa.
