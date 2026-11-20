@@ -196,7 +196,7 @@ Nada de texto, nome de grupo ou foto em claro: nome e foto de grupo vão **dentr
 - **Owner:** fazer o deploy (`firebase deploy --only functions,database`), habilitar o plano Blaze, enviar a chave APNs ao Firebase e ativar Push Notifications + Background Modes no Xcode.
 - Consequência da retenção: quem ficar mais de 30 dias sem abrir o app perde commits e precisa ser adicionado de novo aos grupos.
 
-### Etapa 10. Backup cifrado `[x]`
+### Etapa 10. Backup cifrado `[x]` **(removida em 20/11/2026: o modelo carteiro não guarda nada no servidor; ver [`MODELO_CARTEIRO.md`](MODELO_CARTEIRO.md))**
 - [x] Desenho da seção 3.2: código de recuperação de 260 bits (52 caracteres) + metade de 32 bytes no servidor + Argon2id (64 MiB, 3 passes) + HKDF + AES-256-GCM, com parâmetros autenticados (sem downgrade).
 - [x] Código mostrado uma vez; o usuário confirma digitando o último bloco.
 - [x] Arquivo guardado no nosso backend (`backups/{uid}`), legível só pelo dono verificado; metade do servidor em `backupShares/{uid}`.

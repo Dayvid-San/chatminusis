@@ -3,14 +3,16 @@
 Chat privado para Android e iOS com **criptografia ponta a ponta** em conversas 1:1 e em grupo.
 
 - Protocolo **MLS (RFC 9420)** via OpenMLS, em Rust (`rust/chat_crypto`), exposto ao Flutter por `packages/chat_crypto_ffi`.
-- O servidor (Firebase ou Supabase) só guarda dados cifrados e metadados mínimos.
-- Busca de pessoas apenas por **nickname exato**; verificação por número de segurança; backup cifrado de duas metades.
+- **Modelo carteiro:** o servidor (Firebase ou Supabase) só leva envelopes cifrados e **os apaga assim que todos receberam**. Não há histórico nem backup no servidor: as mensagens existem só nos aparelhos, e cada pessoa guarda ou perde as suas.
+- O app não entrega as mensagens a outros apps (teclado, compartilhar, backups do sistema, área de transferência); só "Copiar mensagem", por escolha da pessoa.
+- Busca de pessoas apenas por **nickname exato**; verificação por número de segurança.
 
 ## Documentação
 | Documento | Para quê |
 |---|---|
 | [`harness/`](harness/README.md) | Regras para humanos e agentes (fluxo Git: tudo vai para `develop`) |
 | [`docs/PLANO_SEGURANCA_E_CHATS.md`](docs/PLANO_SEGURANCA_E_CHATS.md) | Roadmap, decisões e status de cada etapa |
+| [`docs/MODELO_CARTEIRO.md`](docs/MODELO_CARTEIRO.md) | Como o servidor só leva e esquece, o que fica no aparelho e o que se perde |
 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | Modelo de ameaças, revisão, pendências e checklist de lançamento |
 | [`supabase/README.md`](supabase/README.md) | Como usar o backend Supabase |
 

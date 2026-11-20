@@ -18,7 +18,7 @@
 
 ---
 
-## R7. Grupo trava para quem fica mais de 30 dias offline `[x]`
+## R7. Grupo trava para quem fica muito tempo offline `[x]` *(a retenção passou a 7 dias para todos os tipos no modelo carteiro)*
 
 **Problema:** a retenção apaga commits antigos; quem volta depois disso não consegue avançar de época.
 
@@ -106,7 +106,7 @@
 - Supabase: `find_profile_by_nickname` ganhou a mesma lógica com trava consultiva (evita corrida no contador). O contador de buscas fica numa tabela sem nenhuma política, ilegível para clientes.
 - O limite do app (10/min) continua como primeira barreira; o do servidor é a que vale.
 
-## R6. Acesso indevido ao backup `[x]`
+## R6. Acesso indevido ao backup `[x]` *(obsoleto: o backup no servidor foi removido no modelo carteiro)*
 
 **Problema:** quem invade a conta consegue baixar o arquivo e a metade do servidor. Adivinhar o código de 260 bits continua inviável, então o foco é **detectar e dificultar o acesso à conta**, não contar tentativas.
 

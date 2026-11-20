@@ -29,17 +29,20 @@ checks_crypto:                   # obrigatório se tocar rust/ ou packages/chat_
   - (cd packages/chat_crypto_ffi/rust && cargo deny check)
   - (cd packages/chat_crypto_ffi && cargo build --manifest-path rust/Cargo.toml && flutter test)
 
-security_review_required_paths:
-  - lib/core/services/auth_service.dart
-  - lib/core/crypto/**
-  - rust/**
-  - packages/chat_crypto_ffi/rust/**
+security_review_required_paths:       # qualquer mudança aqui passa pelo agente security-reviewer
+  - rust/**                            # núcleo criptográfico
+  - packages/chat_crypto_ffi/rust/**   # ponte
+  - lib/domain/services/**             # serviço de mensagens (confirmação só após gravar, reentrada)
+  - lib/core/security/**               # bloqueio do app, área de transferência privada
+  - lib/data/**                        # Firebase, Supabase e cofre local
+  - lib/presentation/shared_widgets/private_input.dart
+  - firebase/**                        # regras do banco e seus testes
+  - functions/**                       # carteiro, busca, KeyPackages
+  - supabase/**                        # migrações e RLS
+  - android/app/src/main/**            # manifest, bloqueio de capturas, cópia privada
+  - ios/Runner/**                      # backup, cópia privada, prévia do multitarefa
+  - test/privacy_guardrails_test.dart
   - deny.toml
-  - supabase/**
-  - functions/**
-  - firebase/database.rules.json
-  - lib/data/services/**
-  - database.rules.json
   - pubspec.yaml
 
 language:
