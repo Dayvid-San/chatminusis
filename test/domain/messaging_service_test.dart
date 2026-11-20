@@ -705,6 +705,54 @@ void main() {
       expect(texts(bob, id).where((t) => t == 'uma vez só'), hasLength(1), reason: 'no duplicate');
     });
   });
+
+  group('each person owns their history', () {
+    test('deleting a message removes it from this device only, and stays deleted after a restart', () async {
+      final alice = await user('alice');
+      final bobStore = MemorySecureStore();
+      var bob = await user('bob', store: bobStore);
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+      await alice.send(id, 'fica com a alice');
+      await alice.send(id, 'o bob apaga');
+      await eventually(() => texts(bob, id).contains('o bob apaga'));
+
+      final doomed = bob.messages(id).firstWhere((m) => m.text == 'o bob apaga');
+      await bob.deleteMessage(id, doomed.id);
+      expect(texts(bob, id), ['fica com a alice']);
+      expect(texts(alice, id), ['fica com a alice', 'o bob apaga'], reason: 'the other person keeps their own copy');
+
+      await bob.dispose();
+      services.remove(bob);
+      bob = await user('bob', store: bobStore);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(texts(bob, id), ['fica com a alice'], reason: 'the server holds nothing to bring it back');
+    });
+
+    test('clearing the history empties this device but the conversation keeps working', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final id = await alice.startDirect('bob');
+      await eventually(() => bob.conversation(id)?.pendingWelcome == false);
+      await alice.send(id, 'um');
+      await bob.send(id, 'dois');
+      await eventually(() => texts(alice, id).contains('dois') && texts(bob, id).contains('um'));
+
+      await bob.clearHistory(id);
+      expect(texts(bob, id), isEmpty);
+      expect(texts(alice, id), ['um', 'dois']);
+
+      await alice.send(id, 'três');
+      await eventually(() => texts(bob, id).contains('três'));
+      expect(texts(bob, id), ['três'], reason: 'only what arrives after the clean-up');
+    });
+
+    test('deleting something that does not exist is harmless', () async {
+      final alice = await user('alice');
+      await alice.deleteMessage('nao-existe', 'x');
+      await alice.clearHistory('nao-existe');
+    });
+  });
 }
 
 /// A store whose writes can be made to fail (a full disk).

@@ -6,6 +6,7 @@ import '../../chat/widgets/message_bubble_widget.dart';
 import '../view_models/conversations_view_model.dart';
 import 'members_view.dart';
 import 'verify_view.dart';
+import '../../shared_widgets/private_input.dart';
 
 class ConversationView extends StatefulWidget {
   const ConversationView({super.key, required this.conversationId});
@@ -68,6 +69,23 @@ class _ConversationViewState extends State<ConversationView> {
             ),
           ),
         );
+      case 'clear':
+        final sure = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Limpar o histórico?'),
+            content: const Text(
+              'As mensagens desta conversa serão apagadas deste aparelho. '
+              'Não existe cópia em nenhum outro lugar: não dá para recuperar. '
+              'A outra pessoa mantém a cópia dela.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Apagar')),
+            ],
+          ),
+        );
+        if (sure == true) await vm.messaging.clearHistory(_id);
       case 'rotate':
         final error = await vm.run(() => vm.messaging.rotateKeys(_id));
         if (mounted) _snack(error ?? 'Chaves renovadas.');
@@ -152,6 +170,7 @@ class _ConversationViewState extends State<ConversationView> {
               if (isGroup) const PopupMenuItem(value: 'members', child: Text('Membros')),
               const PopupMenuItem(value: 'verify', child: Text('Verificar segurança')),
               const PopupMenuItem(value: 'rotate', child: Text('Renovar chaves')),
+              const PopupMenuItem(value: 'clear', child: Text('Limpar histórico neste aparelho')),
               if (isGroup) const PopupMenuItem(value: 'leave', child: Text('Sair do grupo')),
             ],
           ),
@@ -199,6 +218,7 @@ class _ConversationViewState extends State<ConversationView> {
                         message: m,
                         isMe: m.outgoing,
                         senderName: isGroup && !m.outgoing ? vm.nameOf(m.senderUid) : null,
+                        onDelete: () => vm.messaging.deleteMessage(_id, m.id),
                       );
                     },
                   ),
@@ -211,7 +231,7 @@ class _ConversationViewState extends State<ConversationView> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: PrivateTextField(
                       controller: _input,
                       enabled: ready,
                       minLines: 1,
