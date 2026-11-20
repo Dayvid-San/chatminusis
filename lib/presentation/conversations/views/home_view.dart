@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:chatminusis_components/chatminusis_components.dart';
+
 import '../../../domain/entities/conversation.dart';
 import '../../../domain/entities/user_profile.dart';
 import '../../../domain/repositories/profile_repository.dart';
@@ -70,6 +72,18 @@ class HomeView extends StatelessWidget {
       ),
     );
     if (id != null && context.mounted) _open(context, id);
+  }
+
+  /// Only the person deletes a history, and only of a conversation that ended.
+  Future<void> _deleteEnded(BuildContext context, ConversationsViewModel vm, String id) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Apagar a conversa?',
+      message:
+          'Você não faz mais parte dela. O histórico será apagado deste aparelho e não existe cópia em nenhum outro lugar.',
+      confirmLabel: 'Apagar',
+    );
+    if (ok) await vm.run(() => vm.messaging.deleteConversation(id));
   }
 
   Future<void> _editProfile(BuildContext context) async {
@@ -147,10 +161,14 @@ class HomeView extends StatelessWidget {
                 ),
                 title: Text(title),
                 subtitle: Text(
-                  c.pendingWelcome
+                  c.ended
+                      ? 'Conversa encerrada'
+                      : c.pendingWelcome
                       ? 'Aguardando troca de chaves…'
                       : last == null
                       ? 'Criptografada de ponta a ponta'
+                      : last.hidden
+                      ? 'Mensagem oculta'
                       : last.text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -159,6 +177,7 @@ class HomeView extends StatelessWidget {
                     ? const Icon(Icons.warning_amber, color: Colors.orange)
                     : null,
                 onTap: () => _open(context, c.id),
+                onLongPress: c.ended ? () => _deleteEnded(context, vm, c.id) : null,
               );
             },
           );

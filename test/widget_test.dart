@@ -3,14 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/domain/entities/conversation.dart';
 import 'package:myapp/presentation/chat/widgets/message_bubble_widget.dart';
 
-DecryptedMessage msg(String text, DateTime at, {bool outgoing = false, int? expiresAt}) => DecryptedMessage(
+DecryptedMessage msg(String text, DateTime at, {bool outgoing = false}) => DecryptedMessage(
   id: '1',
   conversationId: 'c',
   senderUid: outgoing ? 'me' : 'bob',
   text: text,
   timestamp: at.millisecondsSinceEpoch,
   outgoing: outgoing,
-  expiresAt: expiresAt,
 );
 
 Future<void> pump(WidgetTester tester, Widget w) => tester.pumpWidget(MaterialApp(home: Scaffold(body: w)));

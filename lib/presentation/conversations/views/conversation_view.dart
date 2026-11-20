@@ -20,7 +20,6 @@ class ConversationView extends StatefulWidget {
 class _ConversationViewState extends State<ConversationView> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
-  Duration? _disappear;
   bool _sending = false;
   int _lastCount = 0;
 
@@ -39,7 +38,7 @@ class _ConversationViewState extends State<ConversationView> {
     final text = _input.text;
     if (text.trim().isEmpty || _sending) return;
     setState(() => _sending = true);
-    final error = await vm.run(() => vm.messaging.send(_id, text, disappearAfter: _disappear));
+    final error = await vm.run(() => vm.messaging.send(_id, text));
     if (!mounted) return;
     setState(() => _sending = false);
     if (error != null) {
@@ -70,51 +69,43 @@ class _ConversationViewState extends State<ConversationView> {
           ),
         );
       case 'clear':
-        final sure = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Limpar o histórico?'),
-            content: const Text(
+        final sure = await confirmDialog(
+          context,
+          title: 'Limpar o histórico?',
+          message:
               'As mensagens desta conversa serão apagadas deste aparelho. '
               'Não existe cópia em nenhum outro lugar: não dá para recuperar. '
               'A outra pessoa mantém a cópia dela.',
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Apagar')),
-            ],
-          ),
+          confirmLabel: 'Apagar',
         );
-        if (sure == true) await vm.messaging.clearHistory(_id);
+        if (sure) await vm.messaging.clearHistory(_id);
       case 'rotate':
         final error = await vm.run(() => vm.messaging.rotateKeys(_id));
         if (mounted) _snack(error ?? 'Chaves renovadas.');
       case 'leave':
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Sair da conversa?'),
-            content: const Text('Você deixará de receber mensagens. O histórico deste aparelho continua salvo.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sair')),
-            ],
-          ),
+        final ok = await confirmDialog(
+          context,
+          title: 'Sair da conversa?',
+          message: 'Você deixará de receber mensagens. O histórico deste aparelho continua salvo.',
+          confirmLabel: 'Sair',
         );
-        if (ok != true) return;
+        if (!ok) return;
         final error = await vm.run(() => vm.messaging.leave(_id));
         if (!mounted) return;
         error == null ? Navigator.of(context).pop() : _snack(error);
     }
   }
 
-  Future<void> _pickTimer() async {
+  /// How long what the other people write stays visible after being shown.
+  /// Set for the whole conversation. Nothing is deleted: hidden messages can
+  /// be shown again by tapping them.
+  Future<void> _pickWindow(ConversationsViewModel vm, Duration? current) async {
     const options = <(String, Duration?)>[
-      ('Desligado', null),
+      ('Sempre visíveis', null),
+      ('30 segundos', Duration(seconds: 30)),
       ('5 minutos', Duration(minutes: 5)),
       ('1 hora', Duration(hours: 1)),
       ('1 dia', Duration(days: 1)),
-      ('7 dias', Duration(days: 7)),
     ];
     final picked = await showModalBottomSheet<(String, Duration?)>(
       context: context,
@@ -122,18 +113,61 @@ class _ConversationViewState extends State<ConversationView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(title: Text('Mensagens temporárias')),
+            const ListTile(
+              title: Text('Tempo de visualização'),
+              subtitle: Text(
+                'Depois deste tempo, as mensagens recebidas ficam ocultas neste aparelho. '
+                'Elas não são apagadas: dá para ver de novo tocando nelas. Vale para todos da conversa.',
+              ),
+            ),
             for (final o in options)
               ListTile(
                 title: Text(o.$1),
-                trailing: o.$2 == _disappear ? const Icon(Icons.check) : null,
+                trailing: o.$2 == current ? const Icon(Icons.check) : null,
                 onTap: () => Navigator.pop(ctx, o),
               ),
           ],
         ),
       ),
     );
-    if (picked != null) setState(() => _disappear = picked.$2);
+    if (picked == null || picked.$2 == current) return;
+    final error = await vm.run(() => vm.messaging.setVisibilityWindow(_id, picked.$2));
+    if (mounted && error != null) _snack(error);
+  }
+
+  Widget _message(ConversationsViewModel vm, ConversationSummary? c, DecryptedMessage m, bool isGroup) {
+    if (m.senderUid.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text(
+          m.text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+    final name = isGroup && !m.outgoing ? vm.nameOf(m.senderUid) : null;
+    // Re-read at the moment the window runs out, so it hides by itself.
+    return RebuildAt(
+      instant: m.viewedUntil == null ? null : DateTime.fromMillisecondsSinceEpoch(m.viewedUntil!),
+      builder: (_) {
+        final now = vm.messagesOf(_id).firstWhere((x) => x.id == m.id, orElse: () => m);
+        if (now.hidden) {
+          final window = c?.visibilityWindow;
+          return HiddenMessageBubble(
+            senderName: name,
+            revealFor: window == null ? null : durationLabel(window),
+            onReveal: () => vm.messaging.requestReveal(_id, m.id),
+          );
+        }
+        return MessageBubbleWidget(
+          message: now,
+          isMe: now.outgoing,
+          senderName: name,
+          onDelete: () => vm.messaging.deleteMessage(_id, m.id),
+        );
+      },
+    );
   }
 
   @override
@@ -144,11 +178,15 @@ class _ConversationViewState extends State<ConversationView> {
     if (messages.length != _lastCount) {
       _lastCount = messages.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        // What is on screen counts as shown: its visibility window starts now.
+        if (mounted) vm.messaging.markViewed(_id);
         if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
       });
     }
     final isGroup = c?.type == ConversationType.group;
-    final ready = c != null && !c.pendingWelcome;
+    final ended = c?.ended ?? false;
+    final ready = c != null && !c.pendingWelcome && !ended;
+    final canSetWindow = c != null && !ended && !c.pendingWelcome && (!isGroup || c.isAdmin);
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -159,11 +197,12 @@ class _ConversationViewState extends State<ConversationView> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: Icon(_disappear == null ? Icons.timer_off_outlined : Icons.timer_outlined),
-            tooltip: 'Mensagens temporárias',
-            onPressed: _pickTimer,
-          ),
+          if (canSetWindow)
+            IconButton(
+              icon: Icon(c.visibilityWindow == null ? Icons.visibility_outlined : Icons.timer_outlined),
+              tooltip: 'Tempo de visualização',
+              onPressed: () => _pickWindow(vm, c.visibilityWindow),
+            ),
           PopupMenuButton<String>(
             onSelected: (a) => _menu(vm, a),
             itemBuilder: (_) => [
@@ -178,6 +217,12 @@ class _ConversationViewState extends State<ConversationView> {
       ),
       body: Column(
         children: [
+          if (ended)
+            const MaterialBanner(
+              content: Text('Você não faz mais parte desta conversa. O histórico continua aqui até você apagar.'),
+              leading: Icon(Icons.info_outline),
+              actions: [SizedBox.shrink()],
+            ),
           if (c?.keyChanged ?? false)
             MaterialBanner(
               content: const Text('A chave de segurança de um participante mudou.'),
@@ -202,25 +247,7 @@ class _ConversationViewState extends State<ConversationView> {
                     controller: _scroll,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     itemCount: messages.length,
-                    itemBuilder: (context, i) {
-                      final m = messages[i];
-                      if (m.senderUid.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Text(
-                            m.text,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        );
-                      }
-                      return MessageBubbleWidget(
-                        message: m,
-                        isMe: m.outgoing,
-                        senderName: isGroup && !m.outgoing ? vm.nameOf(m.senderUid) : null,
-                        onDelete: () => vm.messaging.deleteMessage(_id, m.id),
-                      );
-                    },
+                    itemBuilder: (context, i) => _message(vm, c, messages[i], isGroup),
                   ),
           ),
           SafeArea(
@@ -239,7 +266,7 @@ class _ConversationViewState extends State<ConversationView> {
                       maxLength: 4000,
                       textInputAction: TextInputAction.send,
                       decoration: InputDecoration(
-                        hintText: _disappear == null ? 'Mensagem' : 'Mensagem temporária',
+                        hintText: ended ? 'Conversa encerrada' : 'Mensagem',
                         counterText: '',
                         border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(18))),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
