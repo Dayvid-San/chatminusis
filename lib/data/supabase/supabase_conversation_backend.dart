@@ -82,11 +82,7 @@ class SupabaseConversationBackend implements ConversationBackend {
   ];
 
   @override
-  Future<void> createConversation({
-    required ConversationRecord record,
-    required Envelope firstCommit,
-    required List<WelcomeOut> welcomes,
-  }) async {
+  Future<void> createConversation({required ConversationRecord record, required List<WelcomeOut> welcomes}) async {
     try {
       await _client.rpc<void>(
         'create_conversation',
@@ -94,8 +90,6 @@ class SupabaseConversationBackend implements ConversationBackend {
           'p_id': record.id,
           'p_type': record.type.name,
           'p_members': {for (final m in record.members.entries) m.key: m.value.name},
-          'p_commit_id': firstCommit.id,
-          'p_commit': _b64(firstCommit.payload),
           'p_welcomes': _welcomes(welcomes),
         },
       );
@@ -130,7 +124,7 @@ class SupabaseConversationBackend implements ConversationBackend {
   }
 
   @override
-  Future<void> publishApplication(Envelope message, {required List<String> notifyUids}) => _client.rpc<void>(
+  Future<void> publishApplication(Envelope message) => _client.rpc<void>(
     'publish_application',
     params: {
       'p_conv': message.conversationId,
@@ -139,6 +133,11 @@ class SupabaseConversationBackend implements ConversationBackend {
       'p_payload': _b64(message.payload),
     },
   );
+
+  /// `ack_envelope`: the server forgets the envelope once nobody is waiting for it.
+  @override
+  Future<void> ackEnvelope(Envelope envelope, String uid) =>
+      _client.rpc<void>('ack_envelope', params: {'p_conv': envelope.conversationId, 'p_id': envelope.id});
 
   @override
   Future<void> publishProposal(Envelope proposal) => _client.rpc<void>(

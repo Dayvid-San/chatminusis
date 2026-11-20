@@ -103,3 +103,43 @@ export async function findByNicknameCore(db, callerUid, nickname, nowMs = Date.n
   if (!profile || typeof profile.nickname !== 'string') return null;
   return { uid, nickname: profile.nickname, displayName: profile.displayName ?? profile.nickname };
 }
+
+// ------------------------------------------------------------------ carrier
+
+/**
+ * Carrier model: an envelope is deleted as soon as every CURRENT member except
+ * its sender has confirmed receipt (`acks/{cid}/{mid}/{uid}`). Clients can only
+ * create envelopes and confirm for themselves, so nobody can delete a message
+ * before the others received it. People who left no longer count.
+ *
+ * Returns 'deleted' | 'waiting' | 'gone'.
+ */
+export async function settleEnvelope(db, cid, mid) {
+  const [envSnap, membersSnap, acksSnap] = await Promise.all([
+    db.ref(`mlsMessages/${cid}/${mid}`).get(),
+    db.ref(`conversations/${cid}/members`).get(),
+    db.ref(`acks/${cid}/${mid}`).get(),
+  ]);
+  if (!envSnap.exists()) {
+    if (acksSnap.exists()) await db.ref(`acks/${cid}/${mid}`).remove(); // stray confirmations
+    return 'gone';
+  }
+  const sender = envSnap.val().sender;
+  const acks = acksSnap.val() ?? {};
+  const required = Object.keys(membersSnap.val() ?? {}).filter((uid) => uid !== sender);
+  if (!required.every((uid) => acks[uid] === true)) return 'waiting';
+  await db.ref().update({ [`mlsMessages/${cid}/${mid}`]: null, [`acks/${cid}/${mid}`]: null });
+  return 'deleted';
+}
+
+/** Re-checks every envelope of a conversation (used when a member leaves or is removed). */
+export async function settleConversation(db, cid) {
+  const snap = await db.ref(`mlsMessages/${cid}`).get();
+  const ids = [];
+  snap.forEach((child) => {
+    ids.push(child.key);
+  });
+  const results = [];
+  for (const mid of ids) results.push(await settleEnvelope(db, cid, mid));
+  return results.filter((r) => r === 'deleted').length;
+}

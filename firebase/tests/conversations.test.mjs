@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { test, before, after, beforeEach } from 'node:test';
 import { setup, assertFails, assertSucceeds, ref, get, set, update, serverTimestamp, runTransaction } from './helpers.mjs';
 
@@ -9,11 +10,10 @@ beforeEach(async () => { await t.env.clearDatabase(); });
 const TS = () => serverTimestamp();
 const env = (sender, epoch, kind = 'app', payload = 'Y2lwaGVy') => ({ sender, epoch, kind, payload, ts: TS() });
 
-/** Atomic creation: conversation + first commit + welcomes + membership index. */
+/** Atomic creation: conversation + welcomes + membership index. No envelope: invitees join through their Welcome. */
 function creation(cid, creator, members, type = cid.startsWith('d_') ? 'direct' : 'group') {
   const u = {
     [`conversations/${cid}`]: { type, createdBy: creator, createdAt: TS(), epoch: 1, members },
-    [`mlsMessages/${cid}/c1`]: env(creator, 1, 'commit'),
   };
   for (const m of Object.keys(members)) {
     u[`userConversations/${m}/${cid}`] = { since: TS() };
@@ -216,4 +216,42 @@ test('R3: demoting a member keeps them out of commits', async () => {
     [`conversations/${GROUP}/members/bob`]: null,
     [`userConversations/bob/${GROUP}`]: null,
   }), 'removing someone through a commit needs admin rights');
+});
+
+// ------------------------------------------------------------------ carrier
+// The server only carries: clients create envelopes and confirm receipt; a server
+// function deletes them once everyone received. Nobody can delete or hide a message.
+
+test('carrier: clients can never delete an envelope, not even the sender or the last recipient', async () => {
+  await makeGroup();
+  await set(ref(t.user('alice'), `mlsMessages/${GROUP}/m1`), env('alice', 1));
+  await assertFails(set(ref(t.user('alice'), `mlsMessages/${GROUP}/m1`), null), 'sender cannot withdraw it');
+  await assertFails(set(ref(t.user('bob'), `mlsMessages/${GROUP}/m1`), null), 'recipient cannot delete it');
+  await assertSucceeds(get(ref(t.user('bob'), `mlsMessages/${GROUP}/m1`)));
+});
+
+test('carrier: a member confirms receipt only for themselves, and only for an existing envelope', async () => {
+  await makeGroup();
+  await set(ref(t.user('alice'), `mlsMessages/${GROUP}/m1`), env('alice', 1));
+  await assertSucceeds(set(ref(t.user('bob'), `acks/${GROUP}/m1/bob`), true));
+  await assertFails(set(ref(t.user('bob'), `acks/${GROUP}/m1/alice`), true), 'cannot confirm for someone else');
+  await assertFails(set(ref(t.user('eve'), `acks/${GROUP}/m1/eve`), true), 'not a member');
+  await assertFails(set(ref(t.user('bob', false), `acks/${GROUP}/m1/bob`), true), 'unverified');
+  await assertFails(set(ref(t.user('bob'), `acks/${GROUP}/ghost/bob`), true), 'no such envelope');
+  await assertFails(set(ref(t.user('bob'), `acks/${GROUP}/m1/bob`), false), 'must be true');
+});
+
+test('carrier: confirmations cannot be withdrawn or read (delivery timing stays private)', async () => {
+  await makeGroup();
+  await set(ref(t.user('alice'), `mlsMessages/${GROUP}/m1`), env('alice', 1));
+  await set(ref(t.user('bob'), `acks/${GROUP}/m1/bob`), true);
+  await assertFails(set(ref(t.user('bob'), `acks/${GROUP}/m1/bob`), null));
+  await assertFails(get(ref(t.user('bob'), `acks/${GROUP}/m1`)));
+  await assertFails(get(ref(t.user('alice'), `acks/${GROUP}`)));
+  await assertFails(get(ref(t.user('alice'), 'acks')));
+});
+
+test('carrier: the first commit is not stored (invitees join through their Welcome)', async () => {
+  await assertSucceeds(update(ref(t.user('alice')), creation(DIRECT, 'alice', { alice: 'admin', bob: 'admin' })));
+  assert.equal((await get(ref(t.user('alice'), `mlsMessages/${DIRECT}`))).exists(), false);
 });
