@@ -300,6 +300,16 @@ class MessagingService {
       title: c.title,
       lastMessage: c.messages.isEmpty ? null : _visible(c)(c.messages.last),
       visibilityWindow: c.visibilitySeconds > 0 ? Duration(seconds: c.visibilitySeconds) : null,
+      visibilityProposal: c.proposal,
+      revealRequests: [
+        for (final r in c.revealRequests)
+          if (c.messages.any((m) => m.id == r.messageId && m.outgoing))
+            RevealRequest(
+              messageId: r.messageId,
+              requester: r.requester,
+              text: c.messages.firstWhere((m) => m.id == r.messageId).text,
+            ),
+      ],
       ended: c.removed,
       pendingWelcome: !has,
       membershipMismatch: has && server != null && !_sameSet(server, mls.toSet()),
@@ -458,8 +468,7 @@ class MessagingService {
         );
       });
       await _backend.clearRejoin(id, other);
-      final title = c.title;
-      if (title != null) await _sendPayload(id, {'t': 'meta', 'title': title});
+      await _sendPayload(id, {'t': 'meta', if (c.title != null) 'title': c.title, 'vs': c.visibilitySeconds});
       _emit();
     } catch (_) {
       // Lost a race or offline: the request stays and is retried on the next change.
@@ -533,7 +542,8 @@ class MessagingService {
         ..record = record
         ..removed = false
         ..joinedEpoch = _engine.epoch(groupId: gid).toInt()
-        ..lastRotation = _now().millisecondsSinceEpoch;
+        ..lastRotation = _now().millisecondsSinceEpoch
+        ..awaitingVisibilityState = _engine.epoch(groupId: gid).toInt() > 1;
       await _conversations.save(c);
       await _checkKeys(c);
       _rejoinTimers.remove(c.id)?.cancel();
@@ -630,6 +640,7 @@ class MessagingService {
       _watchGap(c);
       return;
     }
+    _reconcileProposal(c);
     await _persistEngine();
     await _conversations.save(c);
     // Only now is the message really ours: the server may forget it.
@@ -709,13 +720,57 @@ class MessagingService {
         if (c.type == ConversationType.group && title is String && isAdmin) {
           c.title = title.length > 60 ? title.substring(0, 60) : title;
         }
-        // The visibility window: admins in a group, either person in a 1:1.
-        final vis = p['vis'];
-        if (vis is int &&
-            vis >= 0 &&
-            vis <= maxVisibilityWindow.inSeconds &&
-            (c.type == ConversationType.direct || isAdmin)) {
-          VisibilityPolicy.apply(c, vis, _now().millisecondsSinceEpoch);
+        // What was agreed, told to someone who joined later. Only an admin may
+        // say it and only to a device that is still waiting for it: it can never
+        // change a window the current members already have.
+        final vs = p['vs'];
+        if (vs is int && vs >= 0 && vs <= maxVisibilityWindow.inSeconds && c.awaitingVisibilityState && isAdmin) {
+          VisibilityPolicy.apply(c, vs, _now().millisecondsSinceEpoch);
+          c.awaitingVisibilityState = false;
+        }
+      case 'vp': // a member proposes a window
+        final pid = p['pid'];
+        final seconds = p['s'];
+        final members = _memberSet(c);
+        if (pid is String && seconds is int && seconds >= 0 && seconds <= maxVisibilityWindow.inSeconds) {
+          if (members.contains(sender)) {
+            c.proposal = VisibilityProposal(
+              id: pid,
+              seconds: seconds,
+              proposer: sender,
+              acks: {sender},
+              members: members,
+            );
+            _reconcileProposal(c);
+          }
+        }
+      case 'va': // a member accepts it
+        final proposal = c.proposal;
+        if (proposal != null && p['pid'] == proposal.id && proposal.members.contains(sender)) {
+          c.proposal = proposal.withAck(sender);
+          _reconcileProposal(c);
+        }
+      case 'vn': // a member refuses it (or the proposer withdraws it): the window stays
+        final proposal = c.proposal;
+        if (proposal != null && p['pid'] == proposal.id && proposal.members.contains(sender)) c.proposal = null;
+      case 'rq': // someone asks to see a message of mine again
+        final mid = p['m'];
+        final mine = mid is String && c.messages.any((m) => m.id == mid && m.outgoing);
+        if (mine && !c.revealRequests.any((r) => r.messageId == mid && r.requester == sender)) {
+          c.revealRequests.add(RevealRequest(messageId: mid, requester: sender));
+        }
+      case 'rs': // the sender answered my request
+        final mid = p['m'];
+        final i = c.messages.indexWhere((m) => m.id == mid);
+        if (i >= 0 && p['to'] == uid && p['ok'] is bool) {
+          final m = c.messages[i];
+          if (!m.outgoing && m.senderUid == sender && m.reveal == 'req') {
+            if (p['ok'] == true) {
+              VisibilityPolicy.reveal(c, m.id, _now().millisecondsSinceEpoch);
+            } else {
+              c.messages[i] = m.copyWith(reveal: 'den');
+            }
+          }
         }
     }
   }
@@ -853,6 +908,7 @@ class MessagingService {
     await _engine.mergePendingCommit(groupId: gid);
     final c = _conversations.all[id]!;
     _markProcessed(c, env.id);
+    _reconcileProposal(c); // the members may have changed under a pending proposal
     await _persistEngine();
     await _conversations.save(c);
     await _checkKeys(c);
@@ -889,13 +945,7 @@ class MessagingService {
       );
     });
     // Newcomers cannot read older messages: re-send the encrypted title.
-    if (c.title != null || c.visibilitySeconds > 0) {
-      await _sendPayload(id, {
-        't': 'meta',
-        if (c.title != null) 'title': c.title,
-        if (c.visibilitySeconds > 0) 'vis': c.visibilitySeconds,
-      });
-    }
+    await _sendPayload(id, {'t': 'meta', if (c.title != null) 'title': c.title, 'vs': c.visibilitySeconds});
     _emit();
   }
 
@@ -992,7 +1042,12 @@ class MessagingService {
   /// receivers enforce the rules themselves.
   Future<void> sendPayloadForTest(String id, Map<String, Object?> payload) => _sendPayload(id, payload);
 
-  Future<void> _sendPayload(String id, Map<String, Object?> payload, {String? localText}) async {
+  Future<void> _sendPayload(
+    String id,
+    Map<String, Object?> payload, {
+    String? localText,
+    void Function(ConversationState c)? onPublished,
+  }) async {
     for (var attempt = 0; ; attempt++) {
       try {
         await _lock.run(() async {
@@ -1013,6 +1068,7 @@ class MessagingService {
           );
           await _backend.publishApplication(env);
           _markProcessed(c, env.id);
+          onPublished?.call(c);
           if (localText != null) {
             final now = _now().millisecondsSinceEpoch;
             c.messages.add(
@@ -1064,21 +1120,72 @@ class MessagingService {
 
   // ------------------------------------------------------ visibility
 
-  /// Sets how long received messages stay visible after being shown, for the
-  /// whole conversation ([window] null or zero turns it off). Admins in a
-  /// group; either person in a 1:1. Travels sealed, like the group title.
-  Future<void> setVisibilityWindow(String id, Duration? window) async {
-    final c = _conversations.all[id];
-    if (c == null || c.removed) throw const NotAllowedException('Conversa indisponível.');
-    if (c.type == ConversationType.group && !(c.record?.isAdmin(uid) ?? false)) {
-      throw const NotAllowedException('Apenas administradores.');
+  Set<String> _memberSet(ConversationState c) {
+    final gid = _gid(c.id);
+    return _engine.hasGroup(groupId: gid) ? _engine.members(groupId: gid).map(utf8.decode).toSet() : <String>{};
+  }
+
+  /// Applies the proposal once every current member accepted it; drops it if
+  /// the members are no longer the ones it was proposed to.
+  void _reconcileProposal(ConversationState c) {
+    final p = c.proposal;
+    if (p == null) return;
+    final members = _memberSet(c);
+    if (members.isEmpty) return;
+    if (!_sameSet(members, p.members)) {
+      c.proposal = null;
+    } else if (members.every(p.acks.contains)) {
+      VisibilityPolicy.apply(c, p.seconds, _now().millisecondsSinceEpoch);
+      c.proposal = null;
     }
-    final seconds = window == null ? 0 : window.inSeconds.clamp(0, maxVisibilityWindow.inSeconds);
-    await _lock.run(() async {
-      VisibilityPolicy.apply(c, seconds, _now().millisecondsSinceEpoch);
-      await _conversations.save(c);
-    });
-    await _sendPayload(id, {'t': 'meta', 'vis': seconds});
+  }
+
+  /// Proposes how long received messages stay visible after being shown
+  /// ([window] null: never hidden). The members decide together: it takes
+  /// effect only when everyone accepted ([answerVisibilityProposal]). Until
+  /// then the window stays (7 days by default).
+  Future<void> proposeVisibilityWindow(String id, Duration? window) async {
+    final c = _conversations.all[id];
+    if (c == null || c.removed || !_engine.hasGroup(groupId: _gid(id))) {
+      throw const NotAllowedException('Conversa indisponível.');
+    }
+    final seconds = window == null ? 0 : window.inSeconds.clamp(1, maxVisibilityWindow.inSeconds);
+    if (seconds == c.visibilitySeconds && c.proposal == null) return;
+    final pid = _backend.newEnvelopeId(id);
+    await _sendPayload(
+      id,
+      {'t': 'vp', 'pid': pid, 's': seconds},
+      onPublished: (c) {
+        c.proposal = VisibilityProposal(id: pid, seconds: seconds, proposer: uid, acks: {uid}, members: _memberSet(c));
+        _reconcileProposal(c);
+      },
+    );
+  }
+
+  /// A member's answer to the pending proposal. Refusing keeps the window as it is.
+  Future<void> answerVisibilityProposal(String id, {required bool accept}) async {
+    final p = _conversations.all[id]?.proposal;
+    if (p == null || p.acks.contains(uid)) return;
+    if (accept) {
+      await _sendPayload(
+        id,
+        {'t': 'va', 'pid': p.id},
+        onPublished: (c) {
+          if (c.proposal?.id == p.id) {
+            c.proposal = c.proposal!.withAck(uid);
+            _reconcileProposal(c);
+          }
+        },
+      );
+    } else {
+      await _sendPayload(
+        id,
+        {'t': 'vn', 'pid': p.id},
+        onPublished: (c) {
+          if (c.proposal?.id == p.id) c.proposal = null;
+        },
+      );
+    }
   }
 
   /// The conversation is on screen: received messages not shown before start
@@ -1091,14 +1198,36 @@ class MessagingService {
     _emit();
   });
 
-  /// Shows a hidden message again for the conversation's window. Local only:
-  /// the message never left this device, so nobody is asked anything.
-  Future<void> requestReveal(String conversationId, String messageId) => _lock.run(() async {
+  /// Asks the person who wrote a hidden message to let me see it again. They
+  /// decide ([respondReveal]); until they answer it stays hidden.
+  Future<void> requestReveal(String conversationId, String messageId) async {
     final c = _conversations.all[conversationId];
-    if (c == null || !VisibilityPolicy.reveal(c, messageId, _now().millisecondsSinceEpoch)) return;
-    await _conversations.save(c);
-    _emit();
-  });
+    if (c == null || c.removed || c.visibilitySeconds <= 0) return;
+    final m = c.messages.where((m) => m.id == messageId).firstOrNull;
+    if (m == null || m.reveal == 'req') return;
+    if (!VisibilityPolicy.view(c, m, _now().millisecondsSinceEpoch).hidden) return;
+    await _sendPayload(
+      conversationId,
+      {'t': 'rq', 'm': messageId},
+      onPublished: (c) {
+        final i = c.messages.indexWhere((x) => x.id == messageId);
+        if (i >= 0) c.messages[i] = c.messages[i].copyWith(reveal: 'req');
+      },
+    );
+  }
+
+  /// Answers [requester]'s request to see my message again. Approving shows it
+  /// to them for the conversation's window; only to them.
+  Future<void> respondReveal(String conversationId, String messageId, String requester, {required bool approve}) async {
+    final c = _conversations.all[conversationId];
+    if (c == null || !c.revealRequests.any((r) => r.messageId == messageId && r.requester == requester)) return;
+    await _sendPayload(conversationId, {
+      't': 'rs',
+      'm': messageId,
+      'to': requester,
+      'ok': approve,
+    }, onPublished: (c) => c.revealRequests.removeWhere((r) => r.messageId == messageId && r.requester == requester));
+  }
 
   /// Deletes an ended conversation (one this device left or was removed from)
   /// from this device. Only the person decides this, nothing else deletes it.

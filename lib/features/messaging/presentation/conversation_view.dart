@@ -96,9 +96,10 @@ class _ConversationViewState extends State<ConversationView> {
     }
   }
 
-  /// How long what the other people write stays visible after being shown.
-  /// Set for the whole conversation. Nothing is deleted: hidden messages can
-  /// be shown again by tapping them.
+  static String windowLabel(Duration? w) => w == null ? 'sempre visíveis' : durationLabel(w);
+
+  /// Proposes how long what the other people write stays visible after being
+  /// shown. The members must agree: it only takes effect when all accept.
   Future<void> _pickWindow(ConversationsViewModel vm, Duration? current) async {
     const options = <(String, Duration?)>[
       ('Sempre visíveis', null),
@@ -106,6 +107,7 @@ class _ConversationViewState extends State<ConversationView> {
       ('5 minutos', Duration(minutes: 5)),
       ('1 hora', Duration(hours: 1)),
       ('1 dia', Duration(days: 1)),
+      ('7 dias (padrão)', Duration(days: 7)),
     ];
     final picked = await showModalBottomSheet<(String, Duration?)>(
       context: context,
@@ -117,7 +119,8 @@ class _ConversationViewState extends State<ConversationView> {
               title: Text('Tempo de visualização'),
               subtitle: Text(
                 'Depois deste tempo, as mensagens recebidas ficam ocultas neste aparelho. '
-                'Elas não são apagadas: dá para ver de novo tocando nelas. Vale para todos da conversa.',
+                'Não são apagadas: quem as recebeu pode pedir para ver de novo, e quem as enviou aprova ou não. '
+                'A mudança só vale quando todos os membros aceitarem; sem acordo, fica em 7 dias.',
               ),
             ),
             for (final o in options)
@@ -131,8 +134,72 @@ class _ConversationViewState extends State<ConversationView> {
       ),
     );
     if (picked == null || picked.$2 == current) return;
-    final error = await vm.run(() => vm.messaging.setVisibilityWindow(_id, picked.$2));
-    if (mounted && error != null) _snack(error);
+    final error = await vm.run(() => vm.messaging.proposeVisibilityWindow(_id, picked.$2));
+    if (mounted) _snack(error ?? 'Proposta enviada. Vale quando todos aceitarem.');
+  }
+
+  /// Banners that need an answer from me, or tell me what I am waiting for.
+  List<Widget> _pending(ConversationsViewModel vm, ConversationSummary c) {
+    final out = <Widget>[];
+    final p = c.visibilityProposal;
+    if (p != null) {
+      final label = windowLabel(p.seconds == 0 ? null : Duration(seconds: p.seconds));
+      if (p.acks.contains(vm.myUid)) {
+        out.add(
+          MaterialBanner(
+            content: Text('Aguardando os outros aceitarem o tempo de visualização: $label.'),
+            leading: const Icon(Icons.hourglass_empty),
+            actions: [
+              TextButton(
+                onPressed: () => vm.messaging.answerVisibilityProposal(_id, accept: false),
+                child: const Text('Cancelar'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        out.add(
+          MaterialBanner(
+            content: Text('${vm.nameOf(p.proposer)} propôs o tempo de visualização: $label. Você aceita?'),
+            leading: const Icon(Icons.timer_outlined),
+            actions: [
+              TextButton(
+                onPressed: () => vm.messaging.answerVisibilityProposal(_id, accept: false),
+                child: const Text('Recusar'),
+              ),
+              TextButton(
+                onPressed: () => vm.messaging.answerVisibilityProposal(_id, accept: true),
+                child: const Text('Aceitar'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+    if (c.revealRequests.isNotEmpty) {
+      final r = c.revealRequests.first;
+      final more = c.revealRequests.length - 1;
+      out.add(
+        MaterialBanner(
+          content: Text(
+            '${vm.nameOf(r.requester)} pediu para ver de novo uma mensagem sua: “${r.text}”'
+            '${more > 0 ? ' (+$more pedido${more > 1 ? 's' : ''})' : ''}',
+          ),
+          leading: const Icon(Icons.visibility_outlined),
+          actions: [
+            TextButton(
+              onPressed: () => vm.messaging.respondReveal(_id, r.messageId, r.requester, approve: false),
+              child: const Text('Negar'),
+            ),
+            TextButton(
+              onPressed: () => vm.messaging.respondReveal(_id, r.messageId, r.requester, approve: true),
+              child: const Text('Permitir'),
+            ),
+          ],
+        ),
+      );
+    }
+    return out;
   }
 
   Widget _message(ConversationsViewModel vm, ConversationSummary? c, DecryptedMessage m, bool isGroup) {
@@ -153,11 +220,15 @@ class _ConversationViewState extends State<ConversationView> {
       builder: (_) {
         final now = vm.messagesOf(_id).firstWhere((x) => x.id == m.id, orElse: () => m);
         if (now.hidden) {
-          final window = c?.visibilityWindow;
+          final waiting = now.reveal == 'req';
           return HiddenMessageBubble(
             senderName: name,
-            revealFor: window == null ? null : durationLabel(window),
-            onReveal: () => vm.messaging.requestReveal(_id, m.id),
+            label: waiting
+                ? 'Mensagem oculta. Pedido enviado: aguardando ${vm.nameOf(now.senderUid)} aprovar'
+                : now.reveal == 'den'
+                ? 'Mensagem oculta. ${vm.nameOf(now.senderUid)} não permitiu. Toque para pedir de novo'
+                : 'Mensagem oculta. Toque para pedir a ${vm.nameOf(now.senderUid)} que mostre de novo',
+            onTap: waiting ? null : () => vm.messaging.requestReveal(_id, m.id),
           );
         }
         return MessageBubbleWidget(
@@ -186,7 +257,7 @@ class _ConversationViewState extends State<ConversationView> {
     final isGroup = c?.type == ConversationType.group;
     final ended = c?.ended ?? false;
     final ready = c != null && !c.pendingWelcome && !ended;
-    final canSetWindow = c != null && !ended && !c.pendingWelcome && (!isGroup || c.isAdmin);
+    final canSetWindow = c != null && !ended && !c.pendingWelcome;
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -217,6 +288,7 @@ class _ConversationViewState extends State<ConversationView> {
       ),
       body: Column(
         children: [
+          if (c != null && !ended) ..._pending(vm, c),
           if (ended)
             const MaterialBanner(
               content: Text('Você não faz mais parte desta conversa. O histórico continua aqui até você apagar.'),

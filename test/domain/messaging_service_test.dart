@@ -194,63 +194,222 @@ void main() {
       return (alice, bob, id);
     }
 
-    test('nothing is ever deleted by time: only hidden, and only for the receiver', () async {
+    /// Alice proposes, Bob accepts: the window becomes [window] for both.
+    Future<void> agree(MessagingService alice, MessagingService bob, String id, Duration window) async {
+      await alice.proposeVisibilityWindow(id, window);
+      await eventually(() => bob.conversation(id)?.visibilityProposal != null, reason: 'bob sees the proposal');
+      await bob.answerVisibilityProposal(id, accept: true);
+      await eventually(() => alice.conversation(id)?.visibilityWindow == window, reason: 'alice: agreed');
+      await eventually(() => bob.conversation(id)?.visibilityWindow == window, reason: 'bob: agreed');
+    }
+
+    test('without an agreement the window is 7 days', () async {
       final (alice, bob, id) = await pair();
-      await alice.setVisibilityWindow(id, const Duration(minutes: 1));
-      await eventually(
-        () => bob.conversation(id)?.visibilityWindow == const Duration(minutes: 1),
-        reason: 'bob learns the window',
-      );
-
-      await alice.send(id, 'segredo');
-      await eventually(() => texts(bob, id).contains('segredo'));
-      await bob.markViewed(id); // bob opens the conversation: the window starts
-
-      expect(texts(bob, id), contains('segredo'));
-      now = now.add(const Duration(seconds: 59));
-      expect(texts(bob, id), contains('segredo'), reason: 'still inside the window');
-
-      now = now.add(const Duration(seconds: 2));
-      final hidden = bob.messages(id).singleWhere((m) => !m.outgoing && m.senderUid == 'alice');
-      expect(hidden.hidden, isTrue);
-      expect(hidden.text, isEmpty, reason: 'a hidden message exposes no text');
-      expect(bob.conversation(id)!.lastMessage!.text, isEmpty, reason: 'the list preview must not leak it either');
-
-      expect(texts(alice, id), ['segredo'], reason: 'own messages never hide');
-    });
-
-    test('the window starts when the message is first shown, not when it arrives', () async {
-      final (alice, bob, id) = await pair();
-      await alice.setVisibilityWindow(id, const Duration(minutes: 1));
-      await eventually(() => bob.conversation(id)?.visibilityWindow != null);
-      await alice.send(id, 'chegou offline');
-      await eventually(() => texts(bob, id).contains('chegou offline'));
-
-      now = now.add(const Duration(hours: 5)); // bob did not look at it for hours
-      expect(texts(bob, id), contains('chegou offline'));
+      expect(alice.conversation(id)!.visibilityWindow, const Duration(days: 7));
+      expect(bob.conversation(id)!.visibilityWindow, const Duration(days: 7));
+      await alice.send(id, 'oi');
+      await eventually(() => texts(bob, id).contains('oi'));
       await bob.markViewed(id);
-      expect(texts(bob, id), contains('chegou offline'));
-      now = now.add(const Duration(minutes: 2));
+      now = now.add(const Duration(days: 6, hours: 23));
+      expect(texts(bob, id), contains('oi'));
+      now = now.add(const Duration(hours: 2));
       expect(bob.messages(id).last.hidden, isTrue);
     });
 
-    test('the receiver can ask to see it again, for the same window, and it stays stored', () async {
+    test('a proposal changes nothing until the other member accepts', () async {
       final (alice, bob, id) = await pair();
-      await alice.setVisibilityWindow(id, const Duration(minutes: 1));
-      await eventually(() => bob.conversation(id)?.visibilityWindow != null);
-      await alice.send(id, 'de novo');
-      await eventually(() => texts(bob, id).contains('de novo'));
+      await alice.proposeVisibilityWindow(id, const Duration(minutes: 1));
+      await eventually(() => bob.conversation(id)?.visibilityProposal != null);
+      final proposal = bob.conversation(id)!.visibilityProposal!;
+      expect(proposal.proposer, 'alice');
+      expect(proposal.seconds, 60);
+      expect(bob.conversation(id)!.visibilityWindow, const Duration(days: 7), reason: 'not agreed yet');
+      expect(
+        alice.conversation(id)!.visibilityWindow,
+        const Duration(days: 7),
+        reason: 'the proposer does not decide alone',
+      );
+
+      await bob.answerVisibilityProposal(id, accept: true);
+      await eventually(() => alice.conversation(id)?.visibilityWindow == const Duration(minutes: 1));
+      expect(bob.conversation(id)!.visibilityWindow, const Duration(minutes: 1));
+      expect(alice.conversation(id)!.visibilityProposal, isNull);
+      expect(bob.conversation(id)!.visibilityProposal, isNull);
+    });
+
+    test('a refusal keeps the window as it was', () async {
+      final (alice, bob, id) = await pair();
+      await alice.proposeVisibilityWindow(id, const Duration(minutes: 1));
+      await eventually(() => bob.conversation(id)?.visibilityProposal != null);
+      await bob.answerVisibilityProposal(id, accept: false);
+      await eventually(() => alice.conversation(id)?.visibilityProposal == null);
+      expect(alice.conversation(id)!.visibilityWindow, const Duration(days: 7));
+      expect(bob.conversation(id)!.visibilityWindow, const Duration(days: 7));
+    });
+
+    test('in a group every member must accept', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final carol = await user('carol');
+      final gid = await alice.createGroup('Time', ['bob', 'carol']);
+      await eventually(() => bob.conversation(gid)?.pendingWelcome == false);
+      await eventually(() => carol.conversation(gid)?.pendingWelcome == false);
+
+      await bob.proposeVisibilityWindow(gid, const Duration(hours: 1)); // any member may propose
+      await eventually(() => alice.conversation(gid)?.visibilityProposal != null);
+      await eventually(() => carol.conversation(gid)?.visibilityProposal != null);
+      await alice.answerVisibilityProposal(gid, accept: true);
+      await eventually(() => carol.conversation(gid)!.visibilityProposal!.acks.contains('alice'));
+      expect(carol.conversation(gid)!.visibilityWindow, const Duration(days: 7), reason: 'carol has not answered');
+      expect(bob.conversation(gid)!.visibilityWindow, const Duration(days: 7));
+
+      await carol.answerVisibilityProposal(gid, accept: true);
+      for (final s in [alice, bob, carol]) {
+        await eventually(() => s.conversation(gid)?.visibilityWindow == const Duration(hours: 1));
+      }
+    });
+
+    test('one refusal in a group is enough to keep the window', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final carol = await user('carol');
+      final gid = await alice.createGroup('Time', ['bob', 'carol']);
+      await eventually(() => bob.conversation(gid)?.pendingWelcome == false);
+      await eventually(() => carol.conversation(gid)?.pendingWelcome == false);
+      await alice.proposeVisibilityWindow(gid, const Duration(minutes: 5));
+      await eventually(() => carol.conversation(gid)?.visibilityProposal != null);
+      await eventually(() => bob.conversation(gid)?.visibilityProposal != null);
+      await bob.answerVisibilityProposal(gid, accept: true);
+      await carol.answerVisibilityProposal(gid, accept: false);
+      await eventually(() => alice.conversation(gid)?.visibilityProposal == null);
+      for (final s in [alice, bob, carol]) {
+        expect(s.conversation(gid)!.visibilityWindow, const Duration(days: 7));
+      }
+    });
+
+    test('a member who joins learns what was agreed, and a pending proposal is dropped', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final gid = await alice.createGroup('Time', ['bob']);
+      await eventually(() => bob.conversation(gid)?.pendingWelcome == false);
+      await agree(alice, bob, gid, const Duration(minutes: 10));
+
+      await alice.proposeVisibilityWindow(gid, const Duration(hours: 1)); // still pending when dave arrives
+      await eventually(() => bob.conversation(gid)?.visibilityProposal != null);
+      final dave = await user('dave');
+      await alice.addMember(gid, 'dave');
+      await eventually(
+        () => dave.conversation(gid)?.visibilityWindow == const Duration(minutes: 10),
+        reason: 'dave learns it',
+      );
+      await eventually(
+        () => bob.conversation(gid)?.visibilityProposal == null,
+        reason: 'members changed: proposal dropped',
+      );
+      await eventually(() => alice.conversation(gid)?.visibilityProposal == null);
+      expect(bob.conversation(gid)!.visibilityWindow, const Duration(minutes: 10));
+    });
+
+    test('nobody can impose a window by forging payloads', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final carol = await user('carol');
+      final gid = await alice.createGroup('Time', ['bob', 'carol']);
+      await eventually(() => bob.conversation(gid)?.pendingWelcome == false);
+      await eventually(() => carol.conversation(gid)?.pendingWelcome == false);
+      // Even an admin can not set it alone: members already settled ignore "what was agreed".
+      await alice.sendPayloadForTest(gid, {'t': 'meta', 'vs': 5});
+      // A proposal acknowledged by the proposer alone never completes.
+      await bob.sendPayloadForTest(gid, {'t': 'vp', 'pid': 'x', 's': 5});
+      await bob.send(gid, 'oi');
+      await eventually(() => texts(carol, gid).contains('oi'));
+      expect(carol.conversation(gid)!.visibilityWindow, const Duration(days: 7));
+      expect(bob.conversation(gid)!.visibilityWindow, const Duration(days: 7));
+      expect(alice.conversation(gid)!.visibilityWindow, const Duration(days: 7));
+    });
+
+    test('the receiver asks the sender, who must approve before the message is shown again', () async {
+      final (alice, bob, id) = await pair();
+      await agree(alice, bob, id, const Duration(minutes: 1));
+      await alice.send(id, 'segredo');
+      await eventually(() => texts(bob, id).contains('segredo'));
       await bob.markViewed(id);
       now = now.add(const Duration(minutes: 2));
-      final msg = bob.messages(id).last;
-      expect(msg.hidden, isTrue);
+      final hidden = bob.messages(id).last;
+      expect(hidden.hidden, isTrue);
+      expect(hidden.text, isEmpty);
+      expect(bob.conversation(id)!.lastMessage!.text, isEmpty, reason: 'the list preview must not leak it');
 
-      await bob.requestReveal(id, msg.id);
-      expect(texts(bob, id), contains('de novo'));
+      await bob.requestReveal(id, hidden.id);
+      expect(bob.messages(id).last.hidden, isTrue, reason: 'still hidden: waiting for the sender');
+      expect(bob.messages(id).last.reveal, 'req');
+      await eventually(() => alice.conversation(id)!.revealRequests.isNotEmpty, reason: 'alice is asked');
+      final ask = alice.conversation(id)!.revealRequests.single;
+      expect(ask.requester, 'bob');
+      expect(ask.text, 'segredo', reason: 'the sender sees which of their messages it is');
+
+      await alice.respondReveal(id, ask.messageId, 'bob', approve: true);
+      await eventually(() => texts(bob, id).contains('segredo'), reason: 'bob sees it again');
+      expect(alice.conversation(id)!.revealRequests, isEmpty);
       now = now.add(const Duration(seconds: 61));
-      expect(bob.messages(id).last.hidden, isTrue, reason: 'hidden again after the same window');
-      await bob.requestReveal(id, msg.id);
-      expect(texts(bob, id), contains('de novo'), reason: 'can be asked again');
+      expect(bob.messages(id).last.hidden, isTrue, reason: 'hidden again after the window');
+      expect(texts(alice, id), ['segredo'], reason: 'own messages never hide');
+    });
+
+    test('a refusal keeps it hidden, and the receiver can ask again', () async {
+      final (alice, bob, id) = await pair();
+      await agree(alice, bob, id, const Duration(minutes: 1));
+      await alice.send(id, 'não');
+      await eventually(() => texts(bob, id).contains('não'));
+      await bob.markViewed(id);
+      now = now.add(const Duration(minutes: 2));
+      final mid = bob.messages(id).last.id;
+
+      await bob.requestReveal(id, mid);
+      await eventually(() => alice.conversation(id)!.revealRequests.isNotEmpty);
+      await alice.respondReveal(id, mid, 'bob', approve: false);
+      await eventually(() => bob.messages(id).last.reveal == 'den');
+      expect(bob.messages(id).last.hidden, isTrue);
+
+      await bob.requestReveal(id, mid);
+      await eventually(() => alice.conversation(id)!.revealRequests.isNotEmpty, reason: 'asking again is allowed');
+    });
+
+    test('in a group the approval is only for who asked, and only the author can give it', () async {
+      final alice = await user('alice');
+      final bob = await user('bob');
+      final carol = await user('carol');
+      final gid = await alice.createGroup('Time', ['bob', 'carol']);
+      await eventually(() => bob.conversation(gid)?.pendingWelcome == false);
+      await eventually(() => carol.conversation(gid)?.pendingWelcome == false);
+      await alice.proposeVisibilityWindow(gid, const Duration(minutes: 1));
+      await eventually(() => bob.conversation(gid)?.visibilityProposal != null);
+      await eventually(() => carol.conversation(gid)?.visibilityProposal != null);
+      await bob.answerVisibilityProposal(gid, accept: true);
+      await carol.answerVisibilityProposal(gid, accept: true);
+      await eventually(() => carol.conversation(gid)?.visibilityWindow == const Duration(minutes: 1));
+      await eventually(() => bob.conversation(gid)?.visibilityWindow == const Duration(minutes: 1));
+
+      await alice.send(gid, 'só pra bob');
+      for (final s in [bob, carol]) {
+        await eventually(() => texts(s, gid).contains('só pra bob'));
+        await s.markViewed(gid);
+      }
+      now = now.add(const Duration(minutes: 2));
+      final mid = bob.messages(gid).last.id;
+      await bob.requestReveal(gid, mid);
+      await eventually(() => alice.conversation(gid)!.revealRequests.isNotEmpty);
+      await alice.respondReveal(gid, mid, 'bob', approve: true);
+      await eventually(() => texts(bob, gid).contains('só pra bob'));
+      expect(carol.messages(gid).last.hidden, isTrue, reason: 'carol did not ask, so she does not get it back');
+
+      // Carol forges an approval for herself, pretending to be the author: ignored.
+      await carol.requestReveal(gid, mid);
+      await eventually(() => alice.conversation(gid)!.revealRequests.isNotEmpty);
+      await bob.sendPayloadForTest(gid, {'t': 'rs', 'm': mid, 'to': 'carol', 'ok': true});
+      await bob.send(gid, 'oi'); // something to wait for
+      await eventually(() => texts(carol, gid).contains('oi'));
+      expect(carol.messages(gid).firstWhere((m) => m.id == mid).hidden, isTrue, reason: 'only the author may approve');
     });
 
     test('the hidden state survives a restart, and the text is still on the device', () async {
@@ -259,72 +418,16 @@ void main() {
       var bob = await user('bob', store: store);
       final id = await alice.startDirect('bob');
       await eventually(() => bob.conversation(id)?.pendingWelcome == false);
-      await alice.setVisibilityWindow(id, const Duration(minutes: 1));
-      await eventually(() => bob.conversation(id)?.visibilityWindow != null);
       await alice.send(id, 'persiste');
       await eventually(() => texts(bob, id).contains('persiste'));
       await bob.markViewed(id);
       await bob.dispose();
       services.remove(bob);
 
-      now = now.add(const Duration(minutes: 5));
+      now = now.add(const Duration(days: 8));
       bob = await user('bob', store: store);
       expect(bob.messages(id).last.hidden, isTrue);
-      await bob.requestReveal(id, bob.messages(id).last.id);
-      expect(texts(bob, id), contains('persiste'), reason: 'never deleted, only hidden');
-    });
-
-    test('turning it off shows everything again; turning it on covers what is already stored', () async {
-      final (alice, bob, id) = await pair();
-      await alice.send(id, 'antiga');
-      await eventually(() => texts(bob, id).contains('antiga'));
-      await bob.markViewed(id); // no window: nothing happens
-      expect(bob.messages(id).last.hidden, isFalse);
-
-      await alice.setVisibilityWindow(id, const Duration(minutes: 1));
-      await eventually(() => bob.conversation(id)?.visibilityWindow != null);
-      now = now.add(const Duration(minutes: 2));
-      expect(bob.messages(id).last.hidden, isTrue, reason: 'existing messages get the window too');
-
-      await alice.setVisibilityWindow(id, null);
-      await eventually(() => bob.conversation(id)?.visibilityWindow == null);
-      expect(texts(bob, id), contains('antiga'));
-    });
-
-    test('in a 1:1 either person sets it; in a group only admins, and members learn it', () async {
-      final (alice, bob, id) = await pair();
-      await bob.setVisibilityWindow(id, const Duration(hours: 1));
-      await eventually(() => alice.conversation(id)?.visibilityWindow == const Duration(hours: 1));
-
-      final carol = await user('carol');
-      final gid = await alice.createGroup('Time', ['bob', 'carol']);
-      await eventually(() => bob.conversation(gid)?.pendingWelcome == false);
-      await eventually(() => carol.conversation(gid)?.pendingWelcome == false);
-      await expectLater(bob.setVisibilityWindow(gid, const Duration(minutes: 1)), throwsA(isA<NotAllowedException>()));
-
-      await alice.setVisibilityWindow(gid, const Duration(minutes: 10));
-      await eventually(() => carol.conversation(gid)?.visibilityWindow == const Duration(minutes: 10));
-
-      final dave = await user('dave');
-      await alice.addMember(gid, 'dave');
-      await eventually(
-        () => dave.conversation(gid)?.visibilityWindow == const Duration(minutes: 10),
-        reason: 'newcomer learns the window',
-      );
-    });
-
-    test('a member who is not admin can not impose a window by forging the payload', () async {
-      final alice = await user('alice');
-      final bob = await user('bob');
-      final carol = await user('carol');
-      final gid = await alice.createGroup('Time', ['bob', 'carol']);
-      await eventually(() => bob.conversation(gid)?.pendingWelcome == false);
-      await eventually(() => carol.conversation(gid)?.pendingWelcome == false);
-      // Bob bypasses the API check and sends the meta payload himself.
-      await bob.sendPayloadForTest(gid, {'t': 'meta', 'vis': 5});
-      await bob.send(gid, 'oi');
-      await eventually(() => texts(carol, gid).contains('oi'));
-      expect(carol.conversation(gid)!.visibilityWindow, isNull);
+      expect(bob.conversation(id)!.visibilityWindow, const Duration(days: 7));
     });
   });
 

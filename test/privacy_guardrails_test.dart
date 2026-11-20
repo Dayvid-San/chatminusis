@@ -14,7 +14,7 @@ String read(String path) => File(path).readAsStringSync();
 Map<String, String> appSources() => {
   for (final dir in ['lib', 'components/lib'])
     for (final f in Directory(dir).listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart')))
-    f.path: f.readAsStringSync().split('\n').where((l) => !l.trimLeft().startsWith('//')).join('\n'),
+      f.path: f.readAsStringSync().split('\n').where((l) => !l.trimLeft().startsWith('//')).join('\n'),
 };
 
 List<String> filesContaining(Map<String, String> sources, Pattern pattern, {Set<String> except = const {}}) => [
@@ -39,9 +39,7 @@ void main() {
     });
 
     test('the only caller of the private clipboard is the long-press menu of a message', () {
-      expect(filesContaining(sources, 'PrivateClipboard.copy'), [
-        'components/lib/src/chat/message_bubble.dart',
-      ]);
+      expect(filesContaining(sources, 'PrivateClipboard.copy'), ['components/lib/src/chat/message_bubble.dart']);
     });
 
     test('data goes only to the private application-support folder', () {

@@ -9,5 +9,8 @@ class ErrorText extends StatelessWidget {
   @override
   Widget build(BuildContext context) => message.isEmpty
       ? const SizedBox.shrink()
-      : Text(message, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600));
+      : Text(
+          message,
+          style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+        );
 }

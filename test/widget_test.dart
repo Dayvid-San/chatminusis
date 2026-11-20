@@ -28,11 +28,7 @@ void main() {
   testWidgets('group message shows the sender name', (tester) async {
     await pump(
       tester,
-      MessageBubbleWidget(
-        message: msg('Oi', DateTime(2026, 3, 9, 9, 15)),
-        isMe: false,
-        senderName: 'Bob',
-      ),
+      MessageBubbleWidget(message: msg('Oi', DateTime(2026, 3, 9, 9, 15)), isMe: false, senderName: 'Bob'),
     );
     expect(find.text('Bob'), findsOneWidget);
     expect(find.text('09:15'), findsOneWidget);

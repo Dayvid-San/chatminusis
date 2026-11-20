@@ -84,7 +84,7 @@ falha. Foram validados reintroduzindo três vazamentos de propósito.
 | Apagou uma mensagem ou limpou a conversa | Some **só deste aparelho**. A outra pessoa guarda a cópia dela |
 | Saiu do grupo ou foi removido | A conversa fica na lista como encerrada, com o histórico, até **você** apagá-la |
 | O tempo passou | **Nada é apagado sozinho.** O app nunca remove uma mensagem por conta própria |
-| Janela de visibilidade da conversa | As mensagens que você recebe ficam **ocultas** depois do tempo definido; continuam guardadas e você pode ver de novo tocando nelas (ver [`ARQUITETURA.md`](ARQUITETURA.md) §5) |
+| Janela de visibilidade da conversa | As mensagens que você recebe ficam **ocultas** depois do tempo combinado entre os membros (padrão 7 dias); continuam guardadas, e para vê-las de novo quem as enviou precisa aprovar o seu pedido (ver [`ARQUITETURA.md`](ARQUITETURA.md) §5) |
 
 Não existe "recuperar": nem o servidor, nem os desenvolvedores têm cópia.
 

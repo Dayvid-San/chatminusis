@@ -46,7 +46,7 @@ abstract final class VisibilityPolicy {
     if (c.visibilitySeconds <= 0) return false;
     final i = c.messages.indexWhere((m) => m.id == messageId);
     if (i < 0 || !_counts(c.messages[i])) return false;
-    c.messages[i] = c.messages[i].copyWith(viewedUntil: nowMs + c.visibilitySeconds * 1000);
+    c.messages[i] = c.messages[i].copyWith(viewedUntil: nowMs + c.visibilitySeconds * 1000, clearReveal: true);
     return true;
   }
 }

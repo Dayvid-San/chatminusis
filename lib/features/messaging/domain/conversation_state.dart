@@ -3,6 +3,10 @@ import 'dart:convert';
 import 'package:myapp/features/messaging/domain/conversation.dart';
 import 'package:myapp/features/security/domain/secure_store.dart';
 
+/// Until the members agree on another, received messages stay visible this long
+/// after being shown.
+const defaultVisibilitySeconds = 7 * 24 * 3600;
+
 /// Everything this device keeps about one conversation (stored sealed in the
 /// vault): its messages, title, visibility window and delivery bookkeeping.
 class ConversationState {
@@ -16,7 +20,17 @@ class ConversationState {
   bool removed = false;
 
   /// Seconds a received message stays visible after being shown; 0 = always.
-  int visibilitySeconds = 0;
+  /// Starts at [defaultVisibilitySeconds] until the members agree on another.
+  int visibilitySeconds = defaultVisibilitySeconds;
+
+  /// A change the members are still agreeing on.
+  VisibilityProposal? proposal;
+
+  /// Joined after the start: waits for an admin to say what was agreed.
+  bool awaitingVisibilityState = false;
+
+  /// Requests to see again a message I sent, waiting for my answer.
+  final List<RevealRequest> revealRequests = [];
   ConversationRecord? record;
   final Set<String> processed = <String>{};
   final List<DecryptedMessage> messages = [];
@@ -29,6 +43,11 @@ class ConversationState {
     'rot': lastRotation,
     'removed': removed,
     'vis': visibilitySeconds,
+    if (proposal != null) 'vp': proposal!.toJson(),
+    if (awaitingVisibilityState) 'avs': true,
+    'rr': [
+      for (final r in revealRequests) {'m': r.messageId, 'u': r.requester},
+    ],
     'processed': processed.toList(),
     'messages': messages.map((m) => m.toJson()).toList(),
   };
@@ -39,7 +58,16 @@ class ConversationState {
       ..joinedEpoch = j['joined'] as int? ?? 0
       ..lastRotation = j['rot'] as int? ?? 0
       ..removed = j['removed'] as bool? ?? false
-      ..visibilitySeconds = j['vis'] as int? ?? 0;
+      ..visibilitySeconds = j['vis'] as int? ?? defaultVisibilitySeconds
+      ..awaitingVisibilityState = j['avs'] as bool? ?? false;
+    final vp = j['vp'];
+    if (vp is Map) c.proposal = VisibilityProposal.fromJson(vp.cast<String, Object?>());
+    c.revealRequests.addAll(
+      (j['rr'] as List? ?? const []).map((r) {
+        final m = (r as Map).cast<String, Object?>();
+        return RevealRequest(messageId: m['m'] as String, requester: m['u'] as String);
+      }),
+    );
     c.processed.addAll((j['processed'] as List? ?? const []).cast<String>());
     c.messages.addAll(
       (j['messages'] as List? ?? const []).map((m) => DecryptedMessage.fromJson((m as Map).cast<String, Object?>())),
