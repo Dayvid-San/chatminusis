@@ -1,0 +1,93 @@
+# Runs every check from harness/config/project.yaml.
+name: CI
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust core (tests, clippy, licenses)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --manifest-path rust/chat_crypto/Cargo.toml --check
+      - run: cargo test --manifest-path rust/chat_crypto/Cargo.toml
+      - run: cargo clippy --manifest-path rust/chat_crypto/Cargo.toml --all-targets -- -D warnings
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: rust/chat_crypto/Cargo.toml
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: packages/chat_crypto_ffi/rust/Cargo.toml
+
+  flutter:
+    name: Flutter app and bridge
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: stable
+      - run: cargo build --manifest-path packages/chat_crypto_ffi/rust/Cargo.toml
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+      - name: Bridge tests
+        working-directory: packages/chat_crypto_ffi
+        run: flutter pub get && flutter test
+      - name: Components tests
+        working-directory: components
+        run: flutter pub get && flutter analyze --no-fatal-infos && flutter test
+
+  firebase:
+    name: Firebase rules and functions
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Database rules (emulator)
+        working-directory: firebase
+        run: npm ci && npm test
+      - name: Firebase CLI for the emulator (used by the functions tests)
+        working-directory: firebase
+        run: npm ci
+      - name: Cloud Functions (logic and emulator tests)
+        working-directory: functions
+        run: npm ci && npm run test:all
+
+  supabase:
+    name: Supabase RLS
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: supabase/tests/run.sh
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres

@@ -1,0 +1,63 @@
+# Configuração do harness (legível por humanos e agentes)
+
+branches:
+  production: master
+  integration: develop          # destino obrigatório de todo trabalho concluído
+  work_prefixes: [feat, fix, refactor, perf, docs, test, chore, ci, security, hotfix]
+  work_branch_base: develop     # hotfix/* é exceção: sai de master
+  merge_target: develop
+  merge_strategy: no-ff
+  protected: [master, develop]  # sem force-push
+
+commits:
+  convention: conventional-commits
+  max_subject_length: 72
+
+checks:                          # rodar antes de todo merge em develop
+  - flutter pub get
+  - flutter analyze --no-fatal-infos
+  - cargo build --manifest-path packages/chat_crypto_ffi/rust/Cargo.toml   # testes usam a lib Rust real via FFI
+  - flutter test
+  - (cd firebase && npm ci && npm test)   # regras do banco no emulador (Java 11+)
+  - (cd functions && npm ci && npm run test:all)  # lógica das Cloud Functions + núcleo no emulador
+  - supabase/tests/run.sh                 # RLS do Supabase num PostgreSQL (PGHOST/PGPORT/PGUSER)
+
+checks_crypto:                   # obrigatório se tocar rust/ ou packages/chat_crypto_ffi/
+  - cargo test --manifest-path rust/chat_crypto/Cargo.toml
+  - cargo clippy --manifest-path rust/chat_crypto/Cargo.toml --all-targets -- -D warnings
+  - (cd rust/chat_crypto && cargo deny check)
+  - (cd packages/chat_crypto_ffi/rust && cargo deny check)
+  - (cd packages/chat_crypto_ffi && cargo build --manifest-path rust/Cargo.toml && flutter test)
+
+security_review_required_paths:       # qualquer mudança aqui passa pelo agente security-reviewer
+  - rust/**                            # núcleo criptográfico
+  - packages/chat_crypto_ffi/rust/**   # ponte
+  - lib/features/messaging/domain/**   # serviço de mensagens (confirmação só após gravar, reentrada)
+  - lib/features/messaging/data/**     # transporte Firebase e Supabase
+  - lib/features/security/**           # cofre local, bloqueio do app
+  - lib/features/*/data/**             # acesso a Firebase e Supabase
+  - test/architecture_test.dart        # fronteiras entre módulos
+  - components/lib/src/privacy/**      # entrada privada e área de transferência privada
+  - components/lib/src/chat/message_bubble.dart   # único chamador da cópia
+  - firebase/**                        # regras do banco e seus testes
+  - functions/**                       # carteiro, busca, KeyPackages
+  - supabase/**                        # migrações e RLS
+  - android/app/src/main/**            # manifest, bloqueio de capturas, cópia privada
+  - ios/Runner/**                      # backup, cópia privada, prévia do multitarefa
+  - test/privacy_guardrails_test.dart
+  - deny.toml
+  - pubspec.yaml
+
+language:
+  code: en
+  ui: pt-BR
+  docs: pt-BR
+
+dependencies:
+  allowed_licenses: [MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, Zlib, Unicode-3.0, Unicode-DFS-2016]
+  conditional_licenses:          # só as crates listadas em deny.toml, sem modificação
+    MPL-2.0: [hpke-rs, hpke-rs-crypto, hpke-rs-libcrux, hpke-rs-rust-crypto]
+  policy_enforced_by: deny.toml   # cargo deny check
+  forbidden_licenses: [GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-3.0, SSPL-1.0]
+
+platforms: [android, ios]

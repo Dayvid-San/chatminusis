@@ -1,0 +1,13 @@
+{
+  "name": "chatminusis-firebase-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "cd .. && firebase/node_modules/.bin/firebase emulators:exec --only database --project demo-chatminusis \"node --test firebase/tests/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase": "^12.0.0",
+    "firebase-tools": "^14.0.0"
+  }
+}
